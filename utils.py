@@ -4,19 +4,23 @@ import re
 class MemorySegment:
     def __init__(self):
         self.start = 0
-        self.end = 0
         self.data = []
     
     
 class Memory:
-    def __init__(self):
-        self.segments = []
+    def __init__(self): self.segments = []
 
     def seg_in_memory(self, address):
         for seg in self.segments:
-            if address >= seg.start and seg < seg.end:
+            if address >= seg.start and (address - seg.start) < len(seg.data):
                 return True
         return False
+
+    def get_byte(self, address):
+        for seg in self.segments:
+            if address >= seg.start and (address - seg.start) < len(seg.data):
+                return seg.data[ address - seg.start]
+        return None
 
 def parse_mem(lines):
     mem = Memory()
@@ -57,27 +61,3 @@ def parse_log_file(filename):
         res['function'] = parse_funs(lines)
         res['mem'] = parse_mem(lines)
     return res
-
-
-
-
-"""
-
-def get_fun_heads(filename):
-    with open(filename) as f:
-        lines = f.read().split("\n")
-        mem = parse_mem(lines)
-        funs = parse_funs(lines)
-        heads = parse_heads(lines)
-        X = []
-        y = []
-        for seg in mem.segments:
-            a = seg.start
-            for i in range(len(seg.data)):
-                X.append(seg.data[i])
-                if a+i in funs:
-                    y.append(1)
-                else:
-                    y.append(0)
-        return np.array(X, dtype=np.uint8),np.array(y,dtype=np.uint8)
-"""
