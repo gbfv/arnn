@@ -2,13 +2,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from automaton import Automaton
+from utils import parse_log_file
+import pathlib
+
 
 class ARNN(nn.Module):
     #hyperparametres
-    embedding_dim = 10
-    hidden_dim = 20
+    embedding_dim = 20
+    hidden_dim = 200
     criterion = nn.BCELoss()  # Binary Cross-Entropy Loss pour les sorties binaires
-    epochs = 400
+    epochs = 100
         
     def __init__(self):
         super(ARNN, self).__init__()
@@ -69,22 +72,46 @@ if __name__ == "__main__":
     model = ARNN()
 
     # Exemple de données
-    X = [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 12, 1, 0, 1, 0, 0, 2, 0, 1, 0, 5, 1, 0, 0, 1, 3, 0, 1, 2, 0, 0, 3, 1, 0, 6, 0, 0, 10, 1, 0, 2, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0]
-    y = [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 , 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0 , 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    #X = [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 12, 1, 0, 1, 0, 0, 2, 0, 1, 0, 5, 1, 0, 0, 1, 3, 0, 1, 2, 0, 0, 3, 1, 0, 6, 0, 0, 10, 1, 0, 2, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0]
+    #y = [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 , 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0 , 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    data = parse_log_file("data/kernel32.log")
+    model_pth = "model.1.pth"
+    DA,DB = -2,20 #on regarde autour de chaque fonction entre -2 octets et +20
+    DELTA = 6
+    rough_entries = {h+i for i in range(DA,DB) for h in data['function']}
+    X  = [ data["mem"].get_byte(h) for h in rough_entries]
+    y = [
+        1 if h in data["function"] else 0 
+        for h in rough_entries
+    ]
+    y = [0]*DELTA+y[:-DELTA]
+
 
     Xt,yt = torch.tensor(X),torch.tensor(y)
-    model.train(Xt, yt)
+
+    if pathlib.Path(model_pth).is_file():
+        #if learning has been done
+        model = torch.load(model_pth,weights_only=False) 
+    else:
+        #otherwise, we learn the model
+        model = ARNN()
+        model.train(Xt, yt)
+        torch.save(model,model_pth)
+       
+
     with torch.no_grad():
-        predicted = (model(Xt)[0].squeeze() > 0.5).int().detach().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
+        predicted = (model(Xt)[0].squeeze() > 0.8).int().detach().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
         print(f'RNN  : {predicted}')
-        print(f'Terr : {y}')
+        #print(f'Terr : {y}')
         print(f'Diff : {sum(abs(yt - predicted))}')
 
-    A = Automaton(model, list(range(16)), 5, Xt, yt)
+    A = Automaton(model, list(range(256)), 1000, Xt, yt)
+    A.emonde()
     with open("hum_.dot", "w") as f:
         f.write(A.dot())
     print(f"Auto : {A.predict(X)}")
     print(f"Diff :{sum(abs(A.predict(X) - yt.detach().numpy()))}")
+    print(f"Size={len(A.Q)}")
 
 
 """
