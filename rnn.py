@@ -5,17 +5,18 @@ from automaton import Automaton
 from utils import parse_log_file
 import pathlib
 
+LETTERS = 256
 
 class ARNN(nn.Module):
     #hyperparametres
-    embedding_dim = 20
+    embedding_dim = 10
     hidden_dim = 200
     criterion = nn.BCELoss()  # Binary Cross-Entropy Loss pour les sorties binaires
     epochs = 100
         
     def __init__(self):
         super(ARNN, self).__init__()
-        self.embedding = nn.Embedding(256, ARNN.embedding_dim)
+        self.embedding = nn.Embedding(LETTERS, ARNN.embedding_dim)
         self.rnn = nn.RNN(ARNN.embedding_dim, ARNN.hidden_dim)  # batch_first=False par défaut
         self.linear = nn.Linear(ARNN.hidden_dim, 1)
 
@@ -80,12 +81,8 @@ if __name__ == "__main__":
     DELTA = 6
     rough_entries = {h+i for i in range(DA,DB) for h in data['function']}
     X  = [ data["mem"].get_byte(h) for h in rough_entries]
-    y = [
-        1 if h in data["function"] else 0 
-        for h in rough_entries
-    ]
+    y = [ 1 if h in data["function"] else 0 for h in rough_entries]
     y = [0]*DELTA+y[:-DELTA]
-
 
     Xt,yt = torch.tensor(X),torch.tensor(y)
 
@@ -102,32 +99,15 @@ if __name__ == "__main__":
     with torch.no_grad():
         predicted = (model(Xt)[0].squeeze() > 0.8).int().detach().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
         print(f'RNN  : {predicted}')
-        #print(f'Terr : {y}')
         print(f'Diff : {sum(abs(yt - predicted))}')
 
-    A = Automaton(model, list(range(256)), 1000, Xt, yt)
+    A = Automaton(model, list(range(LETTERS)), 1000, Xt, yt)
     A.emonde()
+    #A.minimize()
     with open("hum_.dot", "w") as f:
         f.write(A.dot())
     print(f"Auto : {A.predict(X)}")
     print(f"Diff :{sum(abs(A.predict(X) - yt.detach().numpy()))}")
     print(f"Size={len(A.Q)}")
 
-
-"""
-#checks that h6 = r (* via single steps or all in once *)
-h0 = model.get_default_hidden_state()
-h1 = model.step(0, h0)
-h2 = model.step(1, h1)
-h3 = model.step(0, h2)
-h4 = model.step(1, h3)
-h5 = model.step(0, h4)
-h6 = model.step(0, h5)
-
-for h in [h0, h1, h2, h3, h4, h5, h6]:
-    print(h)
-
-r = model.get_hidden_state(torch.tensor([0, 1, 0, 1, 0, 0]))
-print(r)
-"""
 
