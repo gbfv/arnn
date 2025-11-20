@@ -1,23 +1,28 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from automaton import Automaton
+from torch.nn.utils.rnn import pad_sequence
 from utils import parse_log_file
 import pathlib
+from automaton import Automaton
+from logDataset import LogDataset
+import pickle
 
-LETTERS = 256
+LETTERS = 257 #256 + 1 for padding
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class ARNN(nn.Module):
     #hyperparametres
     embedding_dim = 10
     hidden_dim = 200
-    criterion = nn.BCELoss()  # Binary Cross-Entropy Loss pour les sorties binaires
-    epochs = 100
-        
+    criterion = nn.BCELoss(reduction="none")  # Binary Cross-Entropy Loss pour les sorties binaires
+    epochs = 500
+
+
     def __init__(self):
         super(ARNN, self).__init__()
-        self.embedding = nn.Embedding(LETTERS, ARNN.embedding_dim)
-        self.rnn = nn.RNN(ARNN.embedding_dim, ARNN.hidden_dim)  # batch_first=False par défaut
+        self.embedding = nn.Embedding(LETTERS, ARNN.embedding_dim, padding_idx=256)
+        self.rnn = nn.RNN(ARNN.embedding_dim, ARNN.hidden_dim, batch_first=True)  # batch_first=False par défaut
         self.linear = nn.Linear(ARNN.hidden_dim, 1)
 
     def get_hidden_size(self):
@@ -30,11 +35,11 @@ class ARNN(nn.Module):
         return output, hidden_state
 
     def get_default_hidden_state(self):
-        return torch.zeros(1, 1, self.rnn.hidden_size)
+        return torch.zeros(1, 1, self.rnn.hidden_size).to(DEVICE)
 
-    def step(self, hidden_state, input_char):
-        embedded = self.embedding(torch.tensor(input_char)).unsqueeze(0).unsqueeze(1)
-        output, next_hidden_state = self.rnn(embedded, hidden_state)
+    def step(self, hidden_state, input_char): #TODO à checker
+        embedded = self.embedding(torch.tensor(input_char).to(DEVICE)).unsqueeze(0).unsqueeze(1)
+        output, next_hidden_state = self.rnn(embedded, hidden_state.to(DEVICE))
         return next_hidden_state
 
     def get_hidden_state(self, x):
@@ -51,63 +56,156 @@ class ARNN(nn.Module):
             hidden_states.append(hidden_state)
         return torch.cat(hidden_states, dim=1)
 
-    def train(self, X, y):
-        X = X.unsqueeze(1) # Ajout d'une dimension pour le batch
-        y = y.float() # Convertir en float pour la fonction de perte
-        optimizer = optim.Adam(model.parameters(), lr=0.001)  # Adam optimizer
+    def train(self, dataloader):
+        X, y, mask = next(iter(dataloader)) # uniquement si batch_size = len(dataset) (voir pour étendre)
+        X = X.to(DEVICE)
+        y = y.to(DEVICE)
+        mask = mask.to(DEVICE)
+        optimizer = optim.Adam(self.parameters(), lr=0.001)  # Adam optimizer
 
         # Boucle d'entraînement
         for epoch in range(ARNN.epochs):
             optimizer.zero_grad()  # Réinitialiser les gradients
-            outputs, _ = model(X)  # Prédiction du modèle
-            outputs = outputs.squeeze()
-            loss = ARNN.criterion(outputs, y)  # Calcul de la perte
+            outputs, _ = self(X)  # Prédiction du modèle
+            outputs = outputs.squeeze(2)
+            padded_loss = ARNN.criterion(outputs, y)  # Calcul de la perte total (padding inclus)
+            masked_loss = padded_loss * mask # applique le masque pour ignorer les paddings
+            loss = masked_loss.sum() / mask.sum()  # Moyenne sur les éléments non padding
             loss.backward()  # Rétropropagation
             optimizer.step()  # Mise à jour des poids
             if (epoch + 1) % 10 == 0:
                 print(f'Epoch [{epoch+1}/{ARNN.epochs}], Loss: {loss.item():.4f}')
 
+    def scores(self, y_true, y_pred):
+        combined = list(zip(y_pred, y_true))
+        true_positives  = sum([1 for pred, true in combined if pred == 1 and true == 1])
+        false_positives = sum([1 for pred, true in combined if pred == 1 and true == 0])
+        false_negatives = sum([1 for pred, true in combined if pred == 0 and true == 1])
+        print(f"TP: {true_positives}, FP: {false_positives}, FN: {false_negatives}")
+
+        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0 # VP / (VP + FP)
+        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0 # VP / (VP + FN)
+        f1_score = 2*true_positives / (2*true_positives + false_positives + false_negatives) if (2*true_positives + false_positives + false_negatives) > 0 else 0 # 2*VP / (2*VP + FP + FN)
+        return precision, recall, f1_score
+
+    def get_hyperparameters(self):
+        return {
+            "embedding_dim": ARNN.embedding_dim,
+            "hidden_dim": ARNN.hidden_dim,
+            "epochs": ARNN.epochs
+        }
+
+
+
+def prepared_data(files, DA, DB, DELTA):
+    X, y = [], []
+    for file in files:
+        data = parse_log_file(file)
+        rough_entries = {h+i for i in range(DA,DB) for h in data['function']}
+        X.extend([ data["mem"].get_byte(h) for h in rough_entries])
+        y.extend([ 1 if h in data["function"] else 0 for h in rough_entries])
+    y = [0]*DELTA+y[:-DELTA] # décalage de DELTA octets
+    return X, y
+
+
+def testing_data(files, DELTA): #toutes les données
+    X, y = [], []
+    addr = []
+    for file in files:
+        data = parse_log_file(file)
+        for seg in data["mem"].segments:
+            X.extend(seg.data)
+            addr.extend([seg.start + i for i in range(len(seg.data))])
+    y.extend([ 1 if h in data["function"] else 0 for h in addr])
+    y = [0]*DELTA+y[:-DELTA] # décalage de DELTA octets
+    return X, y
+
+
+def pad_batch(batch):
+    PADDING_ID_Y = 2
+    sequences_x = [item[0] for item in batch]
+    sequences_y = [item[1] for item in batch]
+     
+    X_padded = pad_sequence(sequences_x, padding_value=256, batch_first=True)
+    Y_padded = pad_sequence(sequences_y, padding_value=PADDING_ID_Y, batch_first=True)
+    
+    # creating a mask to ignore padding in loss computation
+    mask = (Y_padded != PADDING_ID_Y).float()
+    Y_padded[Y_padded == PADDING_ID_Y] = 0.0
+    
+    return X_padded, Y_padded, mask
+
+
 
 if __name__ == "__main__":
-    # Exemple d'utilisation
-    model = ARNN()
+    training_files = ["ntdll.log"]
+    testing_files = ["data/msvcr100.log"]
+    model_pth = "models/KMU.500.pth"
 
-    # Exemple de données
-    #X = [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 12, 1, 0, 1, 0, 0, 2, 0, 1, 0, 5, 1, 0, 0, 1, 3, 0, 1, 2, 0, 0, 3, 1, 0, 6, 0, 0, 10, 1, 0, 2, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0]
-    #y = [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 , 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0 , 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    data = parse_log_file("data/kernel32.log")
-    model_pth = "model.1.pth"
-    DA,DB = -2,20 #on regarde autour de chaque fonction entre -2 octets et +20
-    DELTA = 6
-    rough_entries = {h+i for i in range(DA,DB) for h in data['function']}
-    X  = [ data["mem"].get_byte(h) for h in rough_entries]
-    y = [ 1 if h in data["function"] else 0 for h in rough_entries]
-    y = [0]*DELTA+y[:-DELTA]
-
-    Xt,yt = torch.tensor(X),torch.tensor(y)
+    dataset = LogDataset(files=training_files, whitelist=False, training=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, collate_fn=pad_batch)
+    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
 
     if pathlib.Path(model_pth).is_file():
         #if learning has been done
-        model = torch.load(model_pth,weights_only=False) 
+        model = torch.load(model_pth, weights_only=False).to(DEVICE)
     else:
         #otherwise, we learn the model
-        model = ARNN()
-        model.train(Xt, yt)
-        torch.save(model,model_pth)
-       
+        model = ARNN().to(DEVICE)
+        print(f"Hyperparamètres : {model.get_hyperparameters()}")
+        model.train(dataloader)
+        torch.save(model, model_pth)
+
+
+
+    X_test, y_test = prepared_data(testing_files, DA=-2, DB=20, DELTA=6)
+    #X_test, y_test = testing_data(testing_files, DELTA=6)
+    X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
 
     with torch.no_grad():
-        predicted = (model(Xt)[0].squeeze() > 0.8).int().detach().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
-        print(f'RNN  : {predicted}')
-        print(f'Diff : {sum(abs(yt - predicted))}')
+        predicted = (model(X_t)[0].squeeze() > 0.8).int().detach().cpu().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
+        print(f'\nRNN  : {predicted}')
+        print(f'Diff : {sum(abs(y_t - predicted))}')
+        print(f"Scores : {model.scores(y_t, predicted)}")
 
-    A = Automaton(model, list(range(LETTERS)), 1000, Xt, yt)
+
+
+    """ auto_path = f"automate/{model_pth.split('/')[-1].replace('.pth','.pkl')}"
+    if pathlib.Path(auto_path).is_file():
+        with open(auto_path, "rb") as f:
+            A = pickle.load(f)
+    else:
+        print("Construction de l'automate...\n")
+        A = Automaton(model, list(range(LETTERS)), 1000, X_t, y_t)
+        with open(auto_path, "wb") as f:
+            pickle.dump(A, f)
+
     A.emonde()
+    print(f"Nombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
     #A.minimize()
-    with open("hum_.dot", "w") as f:
-        f.write(A.dot())
-    print(f"Auto : {A.predict(X)}")
-    print(f"Diff :{sum(abs(A.predict(X) - yt.detach().numpy()))}")
-    print(f"Size={len(A.Q)}")
+    #with open("hum_.dot", "w") as f:
+        #f.write(A.dot())
+    predicted_auto = A.predict(X_t)
+    print(f"Auto : {predicted_auto}")
+    print(f"Diff :{sum(abs(predicted_auto - y_t.detach().numpy()))}")
+    print(f"Scores Auto : {model.scores(y_t, predicted_auto)}")
+
+    finals = A.path_to_finals()
+    print("Nombre de chemins :", len(finals))
+    dot = "digraph {\n"
+
+    for state, path in finals.items():
+        print(f"Chemins vers l'état final {state} : {path} / {len(path[0])} lettres")
+        for i in range(len(path[1])-1):
+            a = f"{path[1][i]} -> {path[1][i+1]} [label=\"{path[0][i]}\"];\n"
+            if a not in dot:
+                dot += a
+
+    for state in A.F:
+        dot += f"{state} [fillcolor=yellow, style=filled];\n"
+
+    dot += "}"
+    with open("automate/bfs/paths_to_finals.dot", "w") as f:
+        f.write(dot) """
 
 
