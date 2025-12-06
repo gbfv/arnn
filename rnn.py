@@ -7,6 +7,7 @@ import pathlib
 from automaton import Automaton
 from logDataset import LogDataset
 import pickle
+import json
 
 LETTERS = 257 #256 + 1 for padding
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,11 +63,20 @@ class ARNN(nn.Module):
         y = y.to(DEVICE)
         mask = mask.to(DEVICE)
         optimizer = optim.Adam(self.parameters(), lr=0.001)  # Adam optimizer
+        chunk_size = 65535  # Taille des chunks pour l'entrainement
+        num_chunks = X.size(1) // chunk_size if X.size(1) % chunk_size == 0 else X.size(1) // chunk_size + 1
 
         # Boucle d'entraînement
         for epoch in range(ARNN.epochs):
             optimizer.zero_grad()  # Réinitialiser les gradients
-            outputs, _ = self(X)  # Prédiction du modèle
+            hidden_state = None
+            outputs = None
+            for chunk_idx in range(num_chunks):
+                start_idx = chunk_idx * chunk_size
+                end_idx = min((chunk_idx + 1) * chunk_size, X.size(1))
+                op, hidden_state = self(X[:, start_idx:end_idx], hidden_state)  # Prédiction du modèle
+                outputs = torch.cat((outputs, op), dim=1) if outputs is not None else op
+                #hidden_state = hidden_state.detach()  # évite la rétropropagation à travers tout les chunks (utile ?)
             outputs = outputs.squeeze(2)
             padded_loss = ARNN.criterion(outputs, y)  # Calcul de la perte total (padding inclus)
             masked_loss = padded_loss * mask # applique le masque pour ignorer les paddings
@@ -94,7 +104,21 @@ class ARNN(nn.Module):
             "hidden_dim": ARNN.hidden_dim,
             "epochs": ARNN.epochs
         }
+    
+    def predict(self, X, hidden_state=None):
+        with torch.no_grad():
+            chunk_size = 65535  # Taille des chunks pour l'entrainement
+            num_chunks = X.size(0) // chunk_size if X.size(0) % chunk_size == 0 else X.size(0) // chunk_size + 1 #0 car pas de batch (normalement)
+            hidden_state = None
+            outputs = None
+            for chunk_idx in range(num_chunks):
+                start_idx = chunk_idx * chunk_size
+                end_idx = min((chunk_idx + 1) * chunk_size, X.size(0))
+                op, hidden_state = self(X[start_idx:end_idx], hidden_state)  # Prédiction du modèless
+                outputs = torch.cat((outputs, op), dim=0) if outputs is not None else op
+        return outputs #raw output
 
+    #avoir une fonction predict_batch ? Pour le cas où X = [sample, seq_len, features] au lieu de [seq_len, features]
 
 
 def prepared_data(files, DA, DB, DELTA):
@@ -102,8 +126,8 @@ def prepared_data(files, DA, DB, DELTA):
     for file in files:
         data = parse_log_file(file)
         rough_entries = {h+i for i in range(DA,DB) for h in data['function']}
-        X.extend([ data["mem"].get_byte(h) for h in rough_entries])
-        y.extend([ 1 if h in data["function"] else 0 for h in rough_entries])
+        X.extend([ data["mem"].get_byte(h) for h in rough_entries if data["mem"].seg_in_memory(h)]) # vérifie qu'on ne tape pas en dehors de la mémoire
+        y.extend([ 1 if h in data["function"] else 0 for h in rough_entries if data["mem"].seg_in_memory(h)]) # vérifie qu'on ne tape pas en dehors de la mémoire
     y = [0]*DELTA+y[:-DELTA] # décalage de DELTA octets
     return X, y
 
@@ -137,12 +161,14 @@ def pad_batch(batch):
 
 
 
-if __name__ == "__main__":
-    training_files = ["ntdll.log"]
-    testing_files = ["data/msvcr100.log"]
-    model_pth = "models/KMU.500.pth"
 
-    dataset = LogDataset(files=training_files, whitelist=False, training=True)
+if __name__ == "__main__":
+    training_files = ["firewallAPI.log", "gdi32.log", "kerberos.log"]
+    testing_files = ["data/firewallAPI.log", "data/gdi32.log", "data/kerberos.log"]
+    #testing_files = ["data/crypt32.log"]
+    model_pth = "models/FGKer.500.pth"
+
+    dataset = LogDataset(files=training_files, whitelist=True, training=True)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, collate_fn=pad_batch)
     print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
 
@@ -159,43 +185,48 @@ if __name__ == "__main__":
 
 
     X_test, y_test = prepared_data(testing_files, DA=-2, DB=20, DELTA=6)
+    print(f"{len(X_test)} items in testing dataset")
     #X_test, y_test = testing_data(testing_files, DELTA=6)
     X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
 
     with torch.no_grad():
-        predicted = (model(X_t)[0].squeeze() > 0.8).int().detach().cpu().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
+        predicted = (model.predict(X_t).squeeze() > 0.8).int().detach().cpu().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
         print(f'\nRNN  : {predicted}')
         print(f'Diff : {sum(abs(y_t - predicted))}')
         print(f"Scores : {model.scores(y_t, predicted)}")
 
 
 
-    """ auto_path = f"automate/{model_pth.split('/')[-1].replace('.pth','.pkl')}"
+    # Automaton
+    states = 5000
+    #auto_path = f"automate/{model_pth.split('/')[-1].replace('.pth','.pkl')}"
+    auto_path = f"automate/FGKer.500_{states}.pkl"
     if pathlib.Path(auto_path).is_file():
         with open(auto_path, "rb") as f:
             A = pickle.load(f)
+
+        with open(auto_path, "rb") as f:
+            B = pickle.load(f)
     else:
         print("Construction de l'automate...\n")
-        A = Automaton(model, list(range(LETTERS)), 1000, X_t, y_t)
+        A = Automaton(model, list(range(LETTERS)), states, X_t, y_t)
+        A.emonde()
         with open(auto_path, "wb") as f:
             pickle.dump(A, f)
 
-    A.emonde()
     print(f"Nombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
-    #A.minimize()
-    #with open("hum_.dot", "w") as f:
-        #f.write(A.dot())
     predicted_auto = A.predict(X_t)
     print(f"Auto : {predicted_auto}")
     print(f"Diff :{sum(abs(predicted_auto - y_t.detach().numpy()))}")
     print(f"Scores Auto : {model.scores(y_t, predicted_auto)}")
 
-    finals = A.path_to_finals()
-    print("Nombre de chemins :", len(finals))
+    """ finals = A.path_to_finals()
     dot = "digraph {\n"
+    json_save = []
 
     for state, path in finals.items():
         print(f"Chemins vers l'état final {state} : {path} / {len(path[0])} lettres")
+        json_save.append(path[0])
         for i in range(len(path[1])-1):
             a = f"{path[1][i]} -> {path[1][i+1]} [label=\"{path[0][i]}\"];\n"
             if a not in dot:
@@ -206,6 +237,17 @@ if __name__ == "__main__":
 
     dot += "}"
     with open("automate/bfs/paths_to_finals.dot", "w") as f:
-        f.write(dot) """
+        f.write(dot)
+
+    with open("automate/bfs/paths_to_finals.json", "w") as f:
+        json.dump(json_save, f) """
+    
+    """ B.minimize()
+    print(f"Nombre d'état après minimisation : {len(B.Q)} \nNombre d'états finaux : {len(B.F)}")
+    predicted_auto_min = B.predict(X_t)
+    print(f"Auto Min : {predicted_auto_min}")
+    print(f"Diff :{sum(abs(predicted_auto_min - y_t.detach().numpy()))}")
+    print(f"Scores Auto Min : {model.scores(y_t, predicted_auto_min)}")
+    print(f"Diff A/B : {sum(abs(predicted_auto - predicted_auto_min))}") """
 
 

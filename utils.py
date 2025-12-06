@@ -1,5 +1,6 @@
 import numpy as np
 import re
+import sys
 
 class MemorySegment:
     def __init__(self):
@@ -61,3 +62,14 @@ def parse_log_file(filename):
         res['function'] = parse_funs(lines)
         res['mem'] = parse_mem(lines)
     return res
+
+def progress_bar(current, total, largeur=40):
+    r = 108
+    g = 66
+    b = 158
+    color = f"\033[38;2;{r};{g};{b}m"
+
+    progress = int(largeur * current / total)
+    bar = '█' * progress + '-' * (largeur - progress)
+    sys.stdout.write(f"\r{color}[{bar}]\033[0m {current}/{total}")
+    sys.stdout.flush()

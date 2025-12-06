@@ -96,7 +96,7 @@ def prepared_data(files, DA, DB, DELTA):
     y = [0]*DELTA+y[:-DELTA] # décalage de DELTA octets
     return X, y
 
-def testing_data(files, DELTA): #toutes les données
+def testing_data(files, DELTA): # toutes les données
     X, y = [], []
     addr = []
     for file in files:
