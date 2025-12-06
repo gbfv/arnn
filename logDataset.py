@@ -6,8 +6,8 @@ from utils import parse_log_file
 def prepared_data(file, DA, DB, DELTA):
     data = parse_log_file(file)
     rough_entries = {h+i for i in range(DA,DB) for h in data['function']}
-    X = [ data["mem"].get_byte(h) for h in rough_entries]
-    y = [ 1 if h in data["function"] else 0 for h in rough_entries]
+    X = [ data["mem"].get_byte(h) for h in rough_entries if data["mem"].seg_in_memory(h)]
+    y = [ 1 if h in data["function"] else 0 for h in rough_entries if data["mem"].seg_in_memory(h)]
     y = [0]*DELTA+y[:-DELTA] # décalage de DELTA octets
     return X, y
 
@@ -25,8 +25,7 @@ def testing_data(file, DELTA): #toutes les données
 
 
 class LogDataset(Dataset):
-
-    log_files = ["kernel32.log", "user32.log", "msvcr100.log", "ntdll.log"]
+    log_files = ["kernel32.log", "user32.log", "msvcr100.log", "ntdll.log", "basesrv.log", "clp64.log", "cmdext.log", "crypt32.log", "energy.log", "firewallAPI.log", "gdi32.log", "ieproxy.log", "kerberos.log", "libcrypto.log", "signdrv.log", "ws2_32.log"]
     used_files = []
 
     def __init__(self, files, whitelist=True, training=True, DA=-2, DB=20, DELTA=6):

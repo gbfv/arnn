@@ -1,14 +1,18 @@
 import torch
 import numpy as np
 from sklearn.cluster import KMeans
+from utils import progress_bar
 
 class Automaton:
 
     def __init__(self, model, Sigma, state_number, X_val, y_val): #model is a RNN with some stuff
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         hsize = model.get_hidden_size()
 
         H0 = model.get_all_hidden_states(X_val)
-        H = H0.detach().numpy().reshape((-1,hsize))
+        H = H0.detach().cpu().numpy().reshape((-1,hsize))
+        print(len(H), "hidden states collected")
+        print(len(H[0]), "dimensions per hidden state")
 
         kmeans = KMeans(n_clusters=state_number,random_state=1)
         kmeans.fit(H)
@@ -18,12 +22,12 @@ class Automaton:
 
         Q = range(-1,state_number)
         delta = {(q,j): dict() for q in Q for j in Sigma}
-        for (q,j) in delta:
+        for (q,j) in delta: # parallelizable ?
             h = centers[q]
             k = model.step(h, j) #the new hidden layer
-            p = kmeans.predict(k.detach().numpy().reshape((1,hsize)))[0] #the corresponding state
+            p = kmeans.predict(k.detach().cpu().numpy().reshape((1,hsize)))[0] #the corresponding state
             delta[(q,j)] = int(p)  #complete the automaton, p has type np.int64 after prediction
-        F = {q for q in Q if torch.sigmoid(model.linear(centers[q])).detach().numpy().reshape(1)[0] > 0.3}
+        F = {q for q in Q if torch.sigmoid(model.linear(centers[q].to(device))).detach().cpu().numpy().reshape(1)[0] > 0.8}
         
         self.Sigma = Sigma
         self.Q = Q #-1, 0, ..., n
@@ -66,10 +70,11 @@ class Automaton:
         return dot + "}"
 
     def predict(self, X):
-        y = np.zeros_like(X)
+        Xt = X.detach().cpu().numpy()
+        y = np.zeros_like(Xt)
         q = -1
-        for i in range(len(X)):
-            q = self.delta[(q,X[i])]
+        for i in range(len(Xt)):
+            q = self.delta[(q,Xt[i])]
             y[i] = 1 if q in self.F else 0
         return y
 
@@ -92,6 +97,8 @@ class Automaton:
                 for i in self.Sigma:
                     del self.delta[(q,i)]
         self.Q = acc
+        self.F = self.F.intersection(acc) #cut final states too
+
 
     def minimize(self):
         '''
@@ -107,7 +114,7 @@ class Automaton:
             for S in partitions:
                 profiles = dict() #mapping a profile to its corresponding states
                 for q in S:
-                    profile = tuple(q2partition[self.delta[(q,j)]] for j in self.Sigma) 
+                    profile = tuple(q2partition[self.delta[(q,j)]] for j in self.Sigma)
                     if profile not in profiles:
                         profiles[profile] = (new_id,[])
                         new_id += 1
@@ -150,11 +157,45 @@ class Automaton:
         return self
 
 
+    def path_to_finals(self):
+        '''BFS to find shortest paths to finals states'''
+        queue = [(-1, [[],[-1]])] # (state, path to state)
+        visited = set()
+        paths = dict()
+        
+        while queue:
+            state, path = queue.pop(0)
+
+            if state in visited:
+                continue
+            visited.add(state)
+
+            if state in self.F:
+                paths[state] = path
+
+            # letters leading to next states only
+            filtered_j = [j for (q,j) in self.delta.keys() if q == state]
+            for j in filtered_j:
+                next_state = self.delta[(state, j)]
+                if next_state not in visited:
+                    queue.append((next_state, [path[0]+[hex(j)], path[1]+[next_state]]))
+        print(f"Visited states: {len(visited)}")
+        return paths
+
+
+                
+            
+
+
+        
+
+
 if __name__ == "__main__":
     A = Automaton(list(range(2)), list(range(-1,3)), {0,2}, {(-1,0): 0, (-1,1): 1, 
     (0,0): 0, (0,1): 2, 
     (1,0): 1, (1,1): 2, 
     (2,0): 0, (2,1): 2, })
     A.minimize()
+
 
 
