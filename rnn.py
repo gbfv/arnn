@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.nn.utils.rnn import pad_sequence
 from utils import parse_log_file
 import pathlib
-from automaton import Automaton
+from automaton import Automaton, Automaton_old
 from logDataset import LogDataset
 import pickle
 import json
@@ -37,10 +37,16 @@ class ARNN(nn.Module):
 
     def get_default_hidden_state(self):
         return torch.zeros(1, 1, self.rnn.hidden_size).to(DEVICE)
-
-    def step(self, hidden_state, input_char): #TODO à checker
+    
+    def step(self, hidden_state, input_char):
         embedded = self.embedding(torch.tensor(input_char).to(DEVICE)).unsqueeze(0).unsqueeze(1)
         output, next_hidden_state = self.rnn(embedded, hidden_state.to(DEVICE))
+        return next_hidden_state
+
+    def step_batch(self, hidden_state, input_char): #TODO à checker
+        embedded = self.embedding(input_char.to(DEVICE)).unsqueeze(1)
+        hs = hidden_state.expand(-1, embedded.size(0), -1).contiguous().to(DEVICE)
+        output, next_hidden_state = self.rnn(embedded, hs)
         return next_hidden_state
 
     def get_hidden_state(self, x):
@@ -121,6 +127,8 @@ class ARNN(nn.Module):
     #avoir une fonction predict_batch ? Pour le cas où X = [sample, seq_len, features] au lieu de [seq_len, features]
 
 
+
+
 def prepared_data(files, DA, DB, DELTA):
     X, y = [], []
     for file in files:
@@ -161,6 +169,7 @@ def pad_batch(batch):
 
 
 
+import time
 
 if __name__ == "__main__":
     training_files = ["firewallAPI.log", "gdi32.log", "kerberos.log"]
@@ -198,9 +207,9 @@ if __name__ == "__main__":
 
 
     # Automaton
-    states = 5000
+    states = 10000
     #auto_path = f"automate/{model_pth.split('/')[-1].replace('.pth','.pkl')}"
-    auto_path = f"automate/FGKer.500_{states}.pkl"
+    auto_path = f"automate/FGKer.50_{states}.pkl"
     if pathlib.Path(auto_path).is_file():
         with open(auto_path, "rb") as f:
             A = pickle.load(f)
@@ -209,16 +218,31 @@ if __name__ == "__main__":
             B = pickle.load(f)
     else:
         print("Construction de l'automate...\n")
-        A = Automaton(model, list(range(LETTERS)), states, X_t, y_t)
+        time_start = time.time()
+        A = Automaton(model, list(range(256)), states, X_t, y_t)
+        print(f"Temps de construction de l'automate A : {time.time() - time_start:.2f} secondes")
         A.emonde()
-        with open(auto_path, "wb") as f:
-            pickle.dump(A, f)
+        time_startB = time.time()
+        B = Automaton_old(model, list(range(256)), states, X_t, y_t)
+        print(f"Temps de construction de l'automate B : {time.time() - time_startB:.2f} secondes")
+        B.emonde()
+        """ with open(auto_path, "wb") as f:
+            pickle.dump(A, f) """
 
+    print("\n##### A (new) #####")
     print(f"Nombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
     predicted_auto = A.predict(X_t)
     print(f"Auto : {predicted_auto}")
     print(f"Diff :{sum(abs(predicted_auto - y_t.detach().numpy()))}")
     print(f"Scores Auto : {model.scores(y_t, predicted_auto)}")
+
+    print("\n##### B (old) #####")
+    print(f"Nombre d'état après émondage : {len(B.Q)} \nNombre d'états finaux : {len(B.F)}")
+    predicted_auto_B = B.predict(X_t)
+    print(f"Auto : {predicted_auto_B}")
+    print(f"Diff :{sum(abs(predicted_auto_B - y_t.detach().numpy()))}")
+    print(f"Scores Auto : {model.scores(y_t, predicted_auto_B)}")
+
 
     """ finals = A.path_to_finals()
     dot = "digraph {\n"
