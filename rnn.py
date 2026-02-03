@@ -63,29 +63,41 @@ class ARNN(nn.Module):
             hidden_states.append(hidden_state)
         return torch.cat(hidden_states, dim=1)
 
+
     def train(self, dataloader):
         a = ""
         optimizer = optim.Adam(self.parameters(), lr=0.001)  # Adam optimizer
         chunk_size = 65535  # Taille des chunks pour l'entrainement
-        total_loss = 0.0
-        cpt = 0
+
         # Boucle d'entraînement
         for epoch in range(ARNN.epochs):
-            optimizer.zero_grad()  # Réinitialiser les gradients
+            total_loss = 0.0
+            cpt = 0
             for X, y, mask in dataloader:
-                X = X.to(DEVICE)
-                y = y.to(DEVICE)
-                mask = mask.to(DEVICE)
+                X, y, mask = X.to(DEVICE), y.to(DEVICE), mask.to(DEVICE)
                 num_chunks = X.size(1) // chunk_size if X.size(1) % chunk_size == 0 else X.size(1) // chunk_size + 1
                 hidden_state = None
                 outputs = None
+
                 for chunk_idx in range(num_chunks):
-                    start_idx = chunk_idx * chunk_size
-                    end_idx = min((chunk_idx + 1) * chunk_size, X.size(1))
-                    op, hidden_state = self(X[:, start_idx:end_idx], hidden_state)  # Prédiction du modèle
-                    outputs = torch.cat((outputs, op), dim=1) if outputs is not None else op
-                    #hidden_state = hidden_state.detach()  # évite la rétropropagation à travers tout les chunks (utile ?)
-                outputs = outputs.squeeze(2)
+                    optimizer.zero_grad()  # Réinitialiser les gradients
+                    if hidden_state is not None:
+                        hidden_state = hidden_state.detach()  # évite la rétropropagation à travers tout les chunks (utile pour la mémoire)
+                    start = chunk_idx * chunk_size
+                    end = min((chunk_idx + 1) * chunk_size, X.size(1))
+                    op, hidden_state = self(X[:, start:end], hidden_state)  # Prédiction du modèle
+                    #outputs = torch.cat((outputs, op), dim=1) if outputs is not None else op
+                    op = op.squeeze(2)
+                    mask_chunk = mask[:, start:end]
+                    loss_raw = ARNN.criterion(op, y[:, start:end])
+                    masked_loss = (loss_raw * mask_chunk).sum() / (mask_chunk.sum() + 1e-8)
+                    masked_loss.backward()
+                    optimizer.step()
+
+                    total_loss += masked_loss.item()
+                    cpt += 1
+
+                """ outputs = outputs.squeeze(2)
                 padded_loss = ARNN.criterion(outputs, y)  # Calcul de la perte total (padding inclus)
                 masked_loss = padded_loss * mask # applique le masque pour ignorer les paddings
                 loss = masked_loss.sum() / mask.sum()  # Moyenne sur les éléments non padding
@@ -93,14 +105,15 @@ class ARNN(nn.Module):
                 optimizer.step()  # Mise à jour des poids
 
                 total_loss += loss.item()
-                cpt += 1
+                cpt += 1 """
             if (epoch + 1) % 10 == 0:
-                avg_loss = total_loss / cpt
-                print(f'Epoch [{epoch+1}/{ARNN.epochs}], Loss: {avg_loss:.4f}')
-            """ avg_loss = total_loss / cpt
-            a += f"{avg_loss};"
+                print(f'Epoch [{epoch+1}/{ARNN.epochs}], Loss: {total_loss/cpt:.4f}')
+            """ a += f"{total_loss / cpt};"
+            
         with open("loss_rnn.csv", "a") as f:
             f.write(a + "\n") """
+
+
 
     def scores(self, y_true, y_pred):
         combined = list(zip(y_pred, y_true))

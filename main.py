@@ -84,7 +84,7 @@ def batch_rnn_build(name, training_files, batch_size=1024, whitelist=True, save=
     return model
 
 
-def batch_gru_build(name, training_files, whitelist=True, save=True):
+def batch_gru_build(name, training_files, whitelist=True, save=True, DA=-2, DB=20):
     model_path = f"models/{name}.pth"
     # Loading model
     if pathlib.Path(model_path).is_file():
@@ -92,7 +92,7 @@ def batch_gru_build(name, training_files, whitelist=True, save=True):
     
     # Building model
     dataset = LogDataset(files=training_files, whitelist=whitelist)
-    dataset.prep_batch(DA=-2, DB=20)
+    dataset.prep_batch(DA=DA, DB=DB)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1024, shuffle=True)
     print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
 
@@ -143,8 +143,7 @@ def test_model_batch(model_name, files, batch_size=1024, whitelist=True, DA=-2, 
         prec, recall, f1 = model.scores(y_t, predicted)
         print(f"Scores : {prec}, {recall}, {f1}")
         return prec, recall, f1
-
-
+    
 
 ### Automaton functions ###
 
@@ -230,7 +229,7 @@ def test_automaton(automaton_name, files, model):
     return prec, recall, f1
 
 
-def test_automaton_batch(automaton_name, files, model):
+def test_automaton_batch(automaton_name, files, model, DA=-2, DB=20):
     auto_path = f"automate/{automaton_name}.pkl"
     if pathlib.Path(auto_path).is_file():
         with open(auto_path, "rb") as f:
@@ -242,7 +241,7 @@ def test_automaton_batch(automaton_name, files, model):
 
     # Preparing test data
     dataset = LogDataset(files=files, whitelist=True)
-    dataset.prep_batch()
+    dataset.prep_batch(DA=DA, DB=DB)
     print(f"Taille d'une séquence de test : {len(dataset.data[0])}")
     y_t = torch.tensor(dataset.labels).numpy()
 
@@ -323,6 +322,31 @@ def big_run(build, test, model_name, automaton, states):
         json.dump(res, f)
 
 
+def loss_stat(model_name, build_files=["kernel32.log", "msvcr100.log", "user32.log"], test_file=["ntdll.log"], rnn=True):
+    res = []
+    for _ in range(20):
+        if rnn:
+            batch_rnn_build("btest.500", build_files, save=False)
+        else:
+            batch_gru_build("bgru_test.500", build_files, save=False)
+        
+        files = os.listdir("test/")
+        files = sorted([f for f in files if f.endswith(".pth")], key=lambda x: int(x.split(".")[0]))
+        print(files)
+
+        prf = [[], [], []]  # precision, recall, f1
+        for file in files:
+            print(f"Testing model saved at epoch {file.split('.')[0]}...")
+            prec, recall, f1 = test_model_batch(f"{file.split('.')[0]}", test_file)
+            prf[0].append(prec)
+            prf[1].append(recall)
+            prf[2].append(f1)
+            os.remove(f"test/{file}")
+        res.append(prf)
+
+    with open("model_perfs.json", "w") as f:
+        json.dump(res, f)
+
 
 def stats_states(auto_path, files, whitelist=True):
     with open(auto_path, "rb") as f:
@@ -360,6 +384,9 @@ def stats_states(auto_path, files, whitelist=True):
 
 
 
+
+
+
 ##### Main #####
 
 
@@ -367,60 +394,45 @@ if __name__ == "__main__":
     """ build = ["kernel32.log", "msvcr100.log", "user32.log", "ntdll.log", "libcrypto.log", "firewallAPI.log", "ws2_32.log", "signdrv.log", "cmdext.log", "gdi32.log"]
     test = ["kerberos.log","ieproxy.log","crypt32.log","clp64.log","energy.log","basesrv.log"]
     
-    automaton = "bgruCelica.500_"
+    automaton = "bgruCelicaV2.500_"
     states = [500, 1000, 2000, 6000, 6500, 10000]
 
-    big_run(build, test, "bgru_Celica.500", automaton, states) """
-    
+    big_run(build, test, "bgru_CelicaV2.500", automaton, states) """
 
-    """ # Loss test for batch RNN
-    res = []
-    for _ in range(20):
-        batch_rnn_build("bkmu.500", ["kernel32.log", "msvcr100.log", "user32.log"], save=False)
-        
-        files = os.listdir("test/")
-        files = sorted([f for f in files if f.endswith(".pth")], key=lambda x: int(x.split(".")[0]))
-        print(files)
 
-        prf = [[], [], []]  # precision, recall, f1
-        for file in files:
-            print(f"Testing model saved at epoch {file.split('.')[0]}...")
-            prec, recall, f1 = test_model_batch(f"{file.split('.')[0]}", ["ntdll.log"])
-            prf[0].append(prec)
-            prf[1].append(recall)
-            prf[2].append(f1)
-            os.remove(f"test/{file}")
-        res.append(prf)
-
-    with open("model_perfs.json", "w") as f:
-        json.dump(res, f) """
-    
-
-    """ stats = stats_states("automate/bgru_Celica.500_1000.pkl", [], whitelist=False)
+    """ stats = stats_states("automate/bgru_CelicaV2.500_1000.pkl", [], whitelist=False)
     
     stats = sorted(stats.items(), key=lambda x: x[1]["frequence"], reverse=True)
     for s, v in stats[:20]:
         print(f"État {s:<3} :  fréquence {v['frequence']*100:>5.1f} | count {v['count']:>5} | pos_1 : {v['1']:>5} | pos_2 : {v['2']:>5} | pos_3 : {v['3']:>5}") """
 
-    """ with open("automate/bgru_Celica.500_1000.pkl", "rb") as f:
+
+    """ with open("automate/bgru_CelicaV7.500_1000.pkl", "rb") as f:
         A = pickle.load(f)
 
-    X, y = testing_data("data/kernel32.log", DELTA=0)
-    predicted = A.predict_flow(torch.tensor(X), y)
+    X, y = testing_data("data/kerberos.log", DELTA=0)
+    predicted = A.predict_flow(torch.tensor(X), y, window_size=48)
 
     print(f"nombre de fonctions dans y : {sum(y)} / {len(y)}")
     print(f"nombre de fonctions dans predicted : {sum(predicted)} / {len(predicted)}")
     print(f'\nAutomaton  : {predicted} / True : {y[:20]}')
     print(f'Diff : {sum(abs(y - predicted))}')
     
-    model = load_model("bgru_Celica.500")
+    model = load_model("bgru_CelicaV7.500")
     prec, recall, f1 = model.scores(y, predicted)
-    print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
+    print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}") """
 
-    #test = [108, 0, 205, 2, 82, 116, 108, 78, 116, 80, 97, 116, 104, 78, 97, 109, 101, 84, 111, 68, 111, 115]
-    test = [224, 0, 78, 116, 81, 117, 101, 114, 121, 68, 101, 102, 97, 117, 108, 116, 76, 111, 99, 97, 108, 101]
-    pred, _ = A.predict(torch.tensor(test))
-    print(f'Automaton Prediction for sample : {pred}')
-    model = load_model("bgru_Celica.500")
-    bgru_res, _ = model.forward(torch.tensor(test).unsqueeze(0).to(DEVICE))
-    print(f'GRU Prediction for sample : {(bgru_res.squeeze() > 0.8).int().detach().cpu().numpy()}') """
+
+
+    """ model = load_model("bgru_CelicaV5.500")
+    X, y = testing_data("data/kernel32.log", DELTA=0)
+    predicted = model.predict_flow(torch.tensor(X), y, window_size=22)
+
+    print(f"nombre de fonctions dans y : {sum(y)} / {len(y)}")
+    print(f"nombre de fonctions dans predicted : {sum(predicted)} / {len(predicted)}")
+    print(f'\nAutomaton  : {predicted} / True : {y[:20]}')
+    print(f'Diff : {sum(abs(y - predicted))}')
+    
+    model = load_model("bgru_CelicaV5.500")
+    prec, recall, f1 = model.scores(y, predicted)
+    print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}") """

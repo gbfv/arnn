@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
+
 from utils import parse_log_file
 import pathlib
 from automaton import Automaton
@@ -30,9 +32,9 @@ class BRNN(nn.Module):
 
     def forward(self, x, hidden_state=None):
         embedded = self.embedding(x)
-        _, hidden_state = self.rnn(embedded, hidden_state)
-        output = torch.sigmoid(self.linear(hidden_state))  # Prendre la dernière sortie de la séquence (many-to-one)
-        return output, hidden_state
+        _, hs = self.rnn(embedded, hidden_state)
+        output = torch.sigmoid(self.linear(hs))  # Prendre la dernière sortie de la séquence (many-to-one)
+        return output, hs
 
     def get_default_hidden_state(self):
         return torch.zeros(1, 1, self.rnn.hidden_size).to(DEVICE)
@@ -125,6 +127,35 @@ class BRNN(nn.Module):
                 op = op.squeeze()
                 outputs = torch.cat((outputs, op), dim=0) if outputs is not None else op
         return outputs #raw output
+
+
+    def predict_flow(self, X, y_true, window_size=22):
+        with torch.no_grad():
+            Xt = X.detach().cpu().numpy()
+            y = np.zeros_like(Xt)
+            starting_index = 0 # starting index of the window
+
+            hallucinations = 0
+            hidden_state = None
+
+            while starting_index + window_size <= len(Xt):
+                sample = Xt[starting_index:starting_index + window_size]
+                pred, hs = self.forward(torch.tensor(sample).unsqueeze(0).to(DEVICE), hidden_state)
+                if pred.item() > 0.8: # function found
+                    if sum(y_true[starting_index:starting_index + window_size]) == 0: #hallucination check
+                        hallucinations += 1
+                    y[starting_index + 2] = 1
+                    starting_index += 22 # jump to next window
+                    hidden_state = None
+                else:
+                    starting_index += 1 # slide the window by 1
+                    hidden_state = hs
+            print(f"Total hallucinations: {hallucinations}")
+            return y
+
+
+
+
 
 
 def prepared_data(files, DA, DB, DELTA):
