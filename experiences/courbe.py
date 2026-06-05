@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import json
+import pandas as pd
 
 
 
@@ -410,6 +411,25 @@ def bgruCelica(save=False):
         plt.show()
 
 
+def bgruCelicaV2(save=False):
+    states = [500, 1000, 2000, 6000, 6500, 10000]
+    data = {
+        "kerberos.log": {"rnn": 99.9, "automaton": [99.1, 99.2, 99.4, 99.6, 99.5, 99.6]},
+        "ieproxy.log": {"rnn": 99.8, "automaton": [99.5, 99.7, 99.8, 99.5, 99.7, 99.7]},
+        "crypt32.log": {"rnn": 99.8, "automaton": [99.3, 99.2, 99.4, 99.5, 99.4, 99.6]},
+        "clp64.log": {"rnn": 89.9, "automaton": [92.0, 90.4, 92.2, 88.2, 88.2, 90.6]},
+        "energy.log": {"rnn": 99.7, "automaton": [98.8, 99.1, 99.3, 99.6, 99.5, 99.4]},
+        "basesrv.log": {"rnn": 99.7, "automaton": [98.5, 98.2, 99.7, 99.4, 99.1, 99.1]}
+    }
+    plt = multi_auto(data, states)
+    plt.suptitle("Automate bgruCelicaV2.500", fontsize=16)
+
+    if save:
+        plt.savefig('bgruCelicaV2_500.png', dpi=300)
+    else:
+        plt.show()
+
+
 
 def loss(file, multi=True, save=False):
     loss = []
@@ -468,10 +488,31 @@ def loss(file, multi=True, save=False):
         plt.show()
 
 
+#Ce qu'il se passe au dessus est un peu daté
 
+
+def fsm_experiment(save=False):
+    states = [500, 1000, 2000, 6000, 6500, 10000]
+    data = {
+        "ntdll" : {"rnn" : 86.6, "automaton" : [87.0, 86.8, 86.6, 86.7]},
+        "gdi32" : {"rnn" : 98.6, "automaton" : [98.8, 98.6, 98.7, 98.5]},
+        "kerberos" : {"rnn" : 98.7, "automaton" : [98.9, 98.8, 98.8, 98.7]},
+        "libcrypto" : {"rnn" : 90.1, "automaton" : [90.3, 90.1, 90.0, 90.0]},
+        "ws2_32" : {"rnn" : 98.5, "automaton" : [98.7, 98.4, 98.4, 98.5]},
+        "ieproxy" : {"rnn" : 98.6, "automaton" : [98.6, 98.6, 98.6, 98.6]},
+        "crypt32" : {"rnn" : 98.8, "automaton" : [99.0, 99.0, 98.8, 98.8]},
+        "firewallAPI" : {"rnn" : 98.7, "automaton" : [99.0, 98.7, 98.8, 98.7]},
+        "cmdext" : {"rnn" : 98.4, "automaton" : [98.4, 97.9, 98.2, 97.9]}
+    }
+    plt = multi_auto(data, states)
+    plt.suptitle("Automate bCelica FSM Experiment", fontsize=16)
+    
+    if save:
+        plt.savefig('fsm_experiment.png', dpi=300)
+    else:
+        plt.show()
 
 
 
 if __name__ == "__main__":
-    #loss("loss/bgru_raw.csv", multi=True, save=False)
-    bgruCelica(save=True)
+    loss("loss/KMU_FS_sqrt.csv", multi=False, save=True)

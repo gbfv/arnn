@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from utils import parse_log_file, progress_bar
+import numpy as np
+from utils import parse_log_file, progress_bar, get_device
 import pathlib
 import pickle
 from automaton import Automaton
@@ -10,7 +11,7 @@ from logDataset import LogDataset
 
 
 LETTERS = 257 #256 + 1 for padding
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = get_device()
 
 
 class BGRU(nn.Module):
@@ -32,9 +33,9 @@ class BGRU(nn.Module):
 
     def forward(self, x, hidden_state=None):
         embedded = self.embedding(x)
-        _, hidden_state = self.gru(embedded, hidden_state)
-        output = torch.sigmoid(self.linear(hidden_state))
-        return output, hidden_state
+        _, hs = self.gru(embedded, hidden_state)
+        output = torch.sigmoid(self.linear(hs))
+        return output, hs
     
     def get_default_hidden_state(self):
         return torch.zeros(1, 1, self.gru.hidden_size).to(DEVICE)
@@ -80,7 +81,7 @@ class BGRU(nn.Module):
                 X = X.to(DEVICE)
                 y = y.to(DEVICE)
                 outputs, _ = self(X)  # Prédiction du modèle
-                outputs = outputs.squeeze()
+                outputs = outputs.squeeze(0).squeeze(1)
                 loss = BGRU.criterion(outputs, y)
                 loss.backward()  # Rétropropagation
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
@@ -128,6 +129,32 @@ class BGRU(nn.Module):
                 op = op.squeeze()
                 outputs = torch.cat((outputs, op), dim=0) if outputs is not None else op
         return outputs #raw output
+    
+
+    def predict_flow(self, X, y_true, window_size=22):
+        with torch.no_grad():
+            Xt = X.detach().cpu().numpy()
+            y = np.zeros_like(Xt)
+            starting_index = 0 # starting index of the window
+
+            hallucinations = 0
+            hidden_state = None
+
+            while starting_index + window_size <= len(Xt):
+                sample = Xt[starting_index:starting_index + window_size]
+                pred, hs = self.forward(torch.tensor(sample).unsqueeze(0).to(DEVICE), hidden_state)
+                if pred.item() > 0.8: # function found
+                    if sum(y_true[starting_index:starting_index + window_size]) == 0: #hallucination check
+                        hallucinations += 1
+                    y[starting_index + 2] = 1
+                    starting_index += 22 # jump to next window
+                    #hidden_state = None
+                else:
+                    starting_index += 1 # slide the window by 1
+                    #hidden_state = hs
+            print(f"Total hallucinations: {hallucinations}")
+            return y
+
 
 
 
@@ -153,6 +180,9 @@ def testing_data(files, DELTA): # toutes les données
     y.extend([ 1 if h in data["function"] else 0 for h in addr])
     y = [0]*DELTA+y[:-DELTA] # décalage de DELTA octets
     return X, y
+
+
+
 
 
 

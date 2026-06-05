@@ -14,22 +14,23 @@ LETTERS = 257 #256 + 1 for padding
 DEVICE = get_device()
 
 
-class TGRU(nn.Module):
+class TMGRU(nn.Module):
     #hyperparametres
     embedding_dim = 10
     hidden_dim = 100
-    criterion = nn.BCEWithLogitsLoss(reduction="none", pos_weight=torch.tensor(16.0))  # Binary Cross-Entropy Loss pour les sorties binaires
+    #criterion = nn.CrossEntropyLoss(reduction="none", weight=torch.tensor([1.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0]).to(DEVICE))  # Cross-Entropy Loss pour les sorties multi-classes
+    criterion = nn.CrossEntropyLoss(reduction="none", weight=torch.tensor([1.0, 16.0, 16.0, 16.0, 16.0]).to(DEVICE))
     epochs = 500
 
-    def __init__(self):
-        super(TGRU, self).__init__()
-        self.embedding = nn.Embedding(LETTERS, TGRU.embedding_dim, padding_idx=256)  # 256 pour le padding
-        self.gru = nn.GRU(TGRU.embedding_dim, TGRU.hidden_dim, batch_first=True)  # batch_first=False par défaut
-        self.linear = nn.Linear(TGRU.hidden_dim, 1)
+    def __init__(self, nbClasses):
+        super(TMGRU, self).__init__()
+        self.embedding = nn.Embedding(LETTERS, TMGRU.embedding_dim, padding_idx=256)  # 256 pour le padding
+        self.gru = nn.GRU(TMGRU.embedding_dim, TMGRU.hidden_dim, batch_first=True)  # batch_first=False par défaut
+        self.linear = nn.Linear(TMGRU.hidden_dim, nbClasses)
 
 
     def get_hidden_size(self):
-        return TGRU.hidden_dim
+        return TMGRU.hidden_dim
 
     def forward(self, x, hidden_state=None):
         embedded = self.embedding(x)
@@ -67,11 +68,11 @@ class TGRU(nn.Module):
     
     def train(self, dataloader):
         optimizer = optim.Adam(self.parameters(), lr=0.001)  # Adam optimizer
-        chunk_size = 32768 #65535  # Taille des chunks pour l'entrainement
-        a =""
+        chunk_size = 30 #65535  # Taille des chunks pour l'entrainement
+        a = ""
 
         # Boucle d'entraînement
-        for epoch in range(TGRU.epochs):
+        for epoch in range(TMGRU.epochs):
             timer = time.time()
             total_loss = 0
             cpt = 0
@@ -90,7 +91,7 @@ class TGRU(nn.Module):
                     op = op.squeeze(2)
 
                     mask_chunk = mask[:, start:end]
-                    loss_raw = TGRU.criterion(op, y[:, start:end])
+                    loss_raw = TMGRU.criterion(op.permute(0, 2, 1), y[:, start:end].long())
                     masked_loss = (loss_raw * mask_chunk).sum() / (mask_chunk.sum() + 1e-8)
                     masked_loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0) # évite les gradients explosifs
@@ -102,9 +103,9 @@ class TGRU(nn.Module):
                 print(f"Early stopping at epoch {epoch+1} with loss {total_loss/cpt:.4f}")
                 break
             if (epoch + 1) % 10 == 0:
-                print(f'Epoch [{epoch+1}/{TGRU.epochs}], Loss: {total_loss/cpt:.4f}')
+                print(f'Epoch [{epoch+1}/{TMGRU.epochs}], Loss: {total_loss/cpt:.4f}')
             a += f"{total_loss / cpt};"
-            #print(f"Epoch {epoch+1}/{TGRU.epochs} completed in {time.time() - timer:.2f} seconds")
+            #print(f"Epoch {epoch+1}/{TMGRU.epochs} completed in {time.time() - timer:.2f} seconds")
         with open("losses_GRU.csv", "w") as f:
             f.write(a)
 
@@ -122,14 +123,14 @@ class TGRU(nn.Module):
     
     def get_hyperparameters(self):
         return {
-            "embedding_dim": TGRU.embedding_dim,
-            "hidden_dim": TGRU.hidden_dim,
-            "epochs": TGRU.epochs
+            "embedding_dim": TMGRU.embedding_dim,
+            "hidden_dim": TMGRU.hidden_dim,
+            "epochs": TMGRU.epochs
         }
     
     def predict(self, X, hidden_state=None):
         with torch.no_grad():
-            chunk_size = 65535  # Taille des chunks pour l'entrainement
+            chunk_size = 32768 #65535  # Taille des chunks pour l'entrainement
             num_chunks = X.size(0) // chunk_size if X.size(0) % chunk_size == 0 else X.size(0) // chunk_size + 1 #0 car pas de batch (normalement)
             hidden_state = None
             outputs = None
@@ -137,7 +138,7 @@ class TGRU(nn.Module):
                 start_idx = chunk_idx * chunk_size
                 end_idx = min((chunk_idx + 1) * chunk_size, X.size(0))
                 op, hidden_state = self(X[start_idx:end_idx], hidden_state)  # Prédiction du modèless
-                proba = torch.sigmoid(op) # Convertir les logits en probabilités
+                proba = torch.softmax(op, dim=-1) # Convertir les logits en probabilités
                 outputs = torch.cat((outputs, proba), dim=0) if outputs is not None else proba
         return outputs #raw output
 
@@ -180,66 +181,3 @@ def pad_batch(batch):
     Y_padded[Y_padded == PADDING_ID_Y] = 0.0
     
     return X_padded, Y_padded, mask
-
-
-
-import time
-
-if __name__ == "__main__":
-    print(f"Using device: {DEVICE}")
-    training_files = ["kernel32.log","msvcr100.log","user32.log"]
-    testing_files = ["data/ntdll.log",]
-    model_pth = "models/GRU_kmu.500.pth"
-
-    dataset = LogDataset(files=training_files, whitelist=True, training=True)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, collate_fn=pad_batch)
-    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
-
-    if pathlib.Path(model_pth).is_file():
-        #if learning has been done
-        model = torch.load(model_pth, weights_only=False).to(DEVICE)
-    else:
-        #otherwise, we learn the model
-        model = TGRU().to(DEVICE)
-        print(f"Hyperparamètres : {model.get_hyperparameters()}")
-        model.train(dataloader)
-        torch.save(model,model_pth)
-
-
-    X_test, y_test = prepared_data(testing_files, DA=-2, DB=20, DELTA=6)
-    print(f"{len(X_test)} items in testing dataset")
-    #X_test, y_test = testing_data(testing_files, DELTA=6)
-    X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
-    
-    with torch.no_grad():
-        predicted = (model.predict(X_t).squeeze() > 0.8).int().detach().cpu().numpy()  # Seuil à 0.5 pour obtenir des 0 et des 1
-        print(f'\nGRU  : {predicted}')
-        print(f'Diff : {sum(abs(y_t - predicted))}')
-        print(f"Scores : {model.scores(y_t, predicted)}")
-
-
-    
-    # Automaton
-    states = 500
-    #auto_path = f"automate/{model_pth.split('/')[-1].replace('.pth','.pkl')}"
-    auto_path = f"automate/GRU_FGKer.500_{states}.pkl"
-    if pathlib.Path(auto_path).is_file():
-        with open(auto_path, "rb") as f:
-            A = pickle.load(f)
-
-        with open(auto_path, "rb") as f:
-            B = pickle.load(f)
-    else:
-        print("Construction de l'automate...\n")
-        time_start = time.time()
-        A = Automaton(model, list(range(256)), states, X_t, y_t)
-        print(f"Temps de construction de l'automate A : {time.time() - time_start:.2f} secondes")
-        A.emonde()
-        with open(auto_path, "wb") as f:
-            pickle.dump(A, f)
-
-    print(f"Nombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
-    predicted_auto = A.predict(X_t)
-    print(f"Auto : {predicted_auto}")
-    print(f"Diff :{sum(abs(predicted_auto - y_t.detach().numpy()))}")
-    print(f"Scores Auto : {model.scores(y_t, predicted_auto)}")

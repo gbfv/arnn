@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import sys
+import torch
 
 class MemorySegment:
     def __init__(self):
@@ -62,6 +63,12 @@ def parse_log_file(filename):
         res['function'] = parse_funs(lines)
         res['mem'] = parse_mem(lines)
     return res
+
+
+def get_device():
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 
 def progress_bar(current, total, largeur=40):
     r = 108

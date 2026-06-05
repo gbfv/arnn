@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 
-from utils import parse_log_file
+from utils import parse_log_file, get_device
 import pathlib
 from automaton import Automaton
 from logDataset import LogDataset
@@ -11,7 +11,7 @@ import pickle
 import json
 
 LETTERS = 256
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = get_device()
 
 class BRNN(nn.Module):
     #hyperparametres

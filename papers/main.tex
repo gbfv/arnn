@@ -1,0 +1,959 @@
+\documentclass{article}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage[justification=centering, width=0.8\textwidth]{caption} %permet de centrer les légendes
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{tcolorbox}
+\tcbuselibrary{breakable, skins}
+
+
+%french
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+%figures
+\usepackage{tikz}
+\usetikzlibrary{shapes,positioning,calc,shadows,decorations.pathmorphing,decorations.pathreplacing,tikzmark,arrows,automata, external}
+\usetikzlibrary{positioning, shapes.multipart, arrows.meta}
+\newcommand{\tikzmarkinside}[1]{\tikz[overlay,remember picture,baseline=-0.5ex] \node(#1) {};}
+
+
+%Environnements
+\tcbsetforeverylayer{
+	enhanced,
+	breakable,
+	boxrule=0pt,
+	frame hidden,
+	sharp corners,
+	left=1em,
+	right=1em,
+}
+
+\newtcolorbox{alert}[1]{
+	borderline west={1pt}{0pt}{gray!50!red},
+	colback=gray!50!red!20,
+    fonttitle=\bfseries,
+    coltitle=black,
+    attach title to upper,
+    after title={\medspace},
+    title={#1},
+}
+
+\newtcolorbox{example}[1]{
+	borderline west={1pt}{0pt}{gray!50!Emerald},
+	colback=gray!50!Emerald!20,
+    fonttitle=\bfseries,
+    coltitle=black,
+    attach title to upper,
+    after title={\medspace},
+    title={#1},
+}
+
+
+%document
+\title{Exemple jouet\\Retrouver un automate à partir d'un GRU}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+
+\newpage
+\section{Introduction}
+\paragraph{But} L'objectif de cette expérience est de vérifier que la méthode que nous avons proposée pour reconstruire un automate à 
+partir de l'apprentissage d'un GRU est valide. Pour cela, nous allons créer des automates reconnaissant des langages 
+simples, nous serons donc capables d'évaluer la justesse de la reconstruction.
+\par Par ailleurs, cette expérience va nous permettre de tester l'hypothèse des "états d'oubli". Ces états font office de réinitialisation pour permettre
+à l'automate de ne pas s'éloigner des états acceptants, et donc de reconnaitre des séquences dans un milieu bruité.
+
+\paragraph{Évaluation} Afin d'évaluer l'automate reconstruit, nous allons nous appuyer sur le théorème de Myhill-Nerode 
+qui nous dit que, pour un langage $L$, il existe un automate minimal qui reconnaît $L$ et que cet automate est unique 
+à isomorphisme près. Notre méthode d'évaluation consistera donc à réduire les deux automates et à vérifier s'ils sont isomorphes.
+
+
+\section{Méthode}
+
+\paragraph{Principe} La méthode que nous avons proposée pour reconstruire un automate à partir d'un GRU se compose de deux 
+étapes majeures : l'apprentissage d'un modèle GRU et l'extraction de la connaissance du modèle. 
+\par Soit un langage $L$ reconnu par un automate $A$. On entraîne un modèle GRU $M$ à reconnaître ce langage, puis on 
+extrait de ce dernier un automate $B$. Soit $A_{red}$ et $B_{red}$ les automates réduits de $A$ et $B$, s'ils sont
+isomorphes alors $B$ reconnaît le même langage que $A$ et notre méthode est validée.
+
+
+\begin{figure}[ht]
+    \centering
+    \begin{tikzpicture}
+        \node (A)    {A};
+        \node (A-red) [below=2cm of A] {$A_{red}$};
+        \node (GRU)  [right=3cm of A]   {M};
+        \node (B)    [right=2cm of GRU] {B};
+        \node (Bred) [right=2cm of B] {$B_{red}$};
+
+        \draw[-stealth] (A) -- (GRU) node[midway, above] {\texttt{Apprentissage}};
+        \draw[-stealth] (GRU) -- (B) node[midway, above] {\texttt{Extraction}};
+        \draw[-stealth] (B) -- (Bred) node[midway, above] {\texttt{Réduction}};
+        \draw[-stealth] (A) -- (A-red) node[midway, above, sloped] {\texttt{Réduction}};
+        \draw[<->, dashed] (A-red) -- (Bred) node[midway, above, sloped] {\texttt{Isomorphisme ?}};
+    \end{tikzpicture}
+    \caption{Schéma de la méthode}
+\end{figure}
+
+\paragraph{Génération de données} Pour entrainer le modèle, nous avons besoin de données d'entrainement et de données 
+de test, ces deux composants forment un \textit{dataset}. Chaque dataset est constitué de \textit{samples}, des exemples de
+séquences d'entrée, et de \textit{labels} associés à chaque sample.
+\par Dans notre cas, les samples sont générés aléatoirement
+à partir de l'alphabet de l'automate. Si on introduit un symbole de reset, alors chaque mot reconnu par notre langage sera 
+suivi de ce symbole dans un traitement post-génération.
+\par Il existe deux approches pour créer les labels, tout d'abord on utilise notre automate pour repérer les mots au sein 
+de la séquence d'entrée, ensuite on utilise une approche binaire ou multi-classe. Dans le cas binaire,
+seule la dernière lettre d'un mot est associée à la classe positive (1), les autres lettres sont associées à la classe 
+négative (0). En revanche, dans le cas multi-classe, chaque lettre est associée à sa place dans le mot, si une lettre ne fait
+pas partie d'un mot alors elle est associée à la classe 0. Pour la suite de l'expérience, nous utiliserons exclusivement
+l'approche multi-classe, elle nous permet de collecter plus d'informations.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{c|c}
+        \textbf{Binaire} & \textbf{Multi-classe} \\
+        \hline
+        $X = [a,b,c,a,a,b,c]$ & $X = [a,b,c,a,a,b,c]$ \\
+        $Y = [0,0,0,0,0,1,0]$ & $Y = [0,0,0,1,2,3,0]$ \\
+        
+    \end{tabular}
+    \caption{Comparaison des approches d'étiquetage pour un automate qui reconnait le mot "aab"}
+\end{figure}
+
+
+
+
+\subsection{Entrainement du modèle}
+
+%(archi + hyperparamètres)
+\paragraph{Architecture} Nous avons choisi d'utiliser un réseau de neurones récurrent de type GRU pour reconnaitre les langages,
+cela permet de travailler sur des séquences temporelles longues en réduisant l'impact du vanishing gradient observé dans les RNN 
+classiques.
+\par La première brique de notre architecture est une {\color{Emerald}\textbf{couche d'embedding}}, elle associe tous les symboles de l'alphabet à des vecteurs de dimension 2.
+Ensuite, ces vecteurs sont passés à travers une unique {\color{BurntOrange}\textbf{couche GRU}}, utilisant des états cachés de dimension 50. Ces états cachés sont ensuite condensés 
+en un vecteur de dimension N grâce à une {\color{Lavender}\textbf{couche linéaire}}, où N est le nombre de classes (dans notre cas, N=taille d'un mot+1). Enfin, la fonction
+d'activation softmax appliquée à ce vecteur nous donne une distribution de probabilité sur l'ensemble des classes, ce qui nous permet de réaliser une prédiction.
+\par Chaque lettre d'une séquence d'entrée passe par ce pipeline, ce qui nous permet d'avoir des prédictions many-to-many, c'est-à-dire une prédiction pour chaque lettre d'entrée.
+
+\begin{figure}[ht]
+    \centering
+    \resizebox{1\textwidth}{!}{
+    \begin{tikzpicture}[
+        layer/.style={rectangle, draw, rounded corners, thick, minimum width=2.5cm, minimum height=1cm, align=center},
+        arrow/.style={-{Stealth[length=3mm,width=2mm]}, thick},
+        node distance=1.8cm
+    ]
+
+    % --- Input ---
+    \node[layer, fill=blue!10] (input) {Entrée};
+
+    % --- Embedding ---
+    \node[layer, fill=green!10, right=of input] (embedding) {Embedding\\dim : 2};
+
+    % --- RNN ---
+    \node[layer, fill=orange!15, right=of embedding] (gru) {GRU\\hidden dim : 50};
+
+    % --- Linear ---
+    \node[layer, fill=purple!10, right=of gru] (linear) {Couche Linéaire\\(50 $\to$ N)};
+
+    % --- Output ---
+    \node[layer, fill=red!10, right=of linear] (output) {Sortie Softmax\\(N classes)};
+
+    % --- Arrows ---
+    \draw[arrow] (input) -- (embedding);
+    \draw[arrow] (embedding) -- (gru);
+    \draw[arrow] (gru) -- (linear);
+    \draw[arrow] (linear) -- (output);
+
+    % --- Optional hidden loop for RNN ---
+    \draw[arrow, dashed] (gru) .. controls +(3,1) and +(-3,1) .. (gru) {node[above=1cm] {état caché}};
+
+    \end{tikzpicture}
+    }
+    \caption{Architecture du modèle GRU}
+\end{figure}
+
+
+%(tbptt, early stopping, etc)
+\paragraph{Entrainement} L'entrainement du modèle se déroule sur 500 epochs, avec une taille de batch de 32. Nous utilisons l'optimiseur Adam avec un 
+taux d'apprentissage variant entre 0.001 et 0.0001. La fonction de perte utilisée est la cross-entropy, cette dernière est adaptée aux problèmes de classification multi-classe.
+Pour tenir compte du déséquilibre entre le bruit et les mots au sein de la séquence, nous avons pondéré les classes positives (1 et plus) de manière plus importante, quatre fois, que 
+la classe négative (0).
+\par Le cœur de l'entrainement repose sur la technique du Truncated Backpropagation Through Time (TBPTT), qui nous permet de gérer efficacement des longues séquences d'entrée sans 
+surcharger la mémoire. Le principe du TBPTT est de découper les séquences en segments, appelé "chunks", et de ne calculer les gradients que sur ces segments, tout en conservant les 
+états cachés intermédiaires. Dans notre cas, nous avons choisi une taille de chunk de 1000, nous permettant d'analyser des séquences d'entrée de longueurs 10000 ou plus sans ralentir
+excessivement l'entrainement.
+
+
+
+%(f1-score macro)
+\label{sec:model-perf}
+\paragraph{Performances} Actuellement, nous utilisons un système multi-classe pour l'entrainement, chaque lettre d'une séquence d'entrée est associée à une classe de 
+sortie comprise entre 0 et N, avec N > 1. Pour cela, nous ne pouvons utiliser le F1-score classique qui est adapté pour les problèmes de classification binaire, nous avons 
+donc recours au F1-score macro : $$F1_{macro} = \frac{1}{N} \sum_{i=0}^{N} F1_i$$
+où $F1_i$ est le F1-score pour la classe $i$. Cette métrique nous permet d'évaluer simultanément la performance du modèle en général et pour chaque classe individuellement.
+
+
+
+\subsection{Reconstruction de l'automate}
+
+% (clustering, etc)
+\paragraph{Extraire de la connaissance} Afin de reconstruire l'automate à partir du modèle GRU, nous devons extraire la connaissance accumulée par ce dernier lors de l'entrainement.
+Pour cela, nous récupérons les états cachés d'un dataset, puis nous appliquons un algorithme de clustering sur ces états pour créer les états de l'automate. Dans notre cas, nous
+utilisons l'algorithme des k-means. Nous le verrons par la suite, le choix du nombre de clusters est crucial pour la qualité de la reconstruction.
+\par Afin de définir un état initial pour l'automate, nous ajoutons au clusters un état supplémentaire, l'état -1, qui correspond à l'état initial du GRU, c'est-à-dire un vecteur de taille 50
+rempli de 0. Cette approche nous permet de trouver facilement un état initial pour l'automate, même si elle peut introduire des biais dans la reconstruction, ce dont nous discuterons plus tard. 
+
+\newpage
+% (algorithme de construction, minimisation, etc)
+\paragraph{Construction de l'automate} Les clusters obtenus, il nous reste à construire les transitions entres les différents états de l'automate, la fonction de transition $\delta$. 
+Pour cela, nous nous appuyons sur le modèle GRU, en lui passant un centroïde de cluster comme état caché $C$ et une lettre de l'alphabet $l$ comme entrée, nous obtenons un nouvel 
+état caché. Ce nouvel état caché est assigné au cluster $C'$ le plus proche via k-means. Ainsi, $\delta(C, l) = C'$ représente une transition de l'automate. En répétant ce 
+processus pour tous les couples (cluster, lettre), nous obtenons un automate complet.
+\par Enfin, l'algorithme de Moore nous permet de réduire l'automate obtenu.
+
+
+% (f1-score macro)
+\paragraph{Performances}
+La forme des données d'entrée et de sortie de l'automate est similaire à celle du modèle GRU. Nous pouvons donc utiliser les 
+mêmes métriques que pour ce dernier, à savoir le F1-score macro définit dans la section \ref{sec:model-perf}.
+
+\newpage
+\section{Expériences et résultats}
+
+\begin{alert}{Remarque importante}
+\\ Les résultats présentés dans cette section ne sont pas issus d'un benchmark rigoureux, avec de multiples exécutions.
+Ils ont été vérifiés en exécutant quelques fois les expériences, mais ils peuvent être sujets à des variations.
+\end{alert}
+
+\subsection{Safe} 
+    La première expérience réalisée vise à reproduire un automate reconnaissant un langage simple, sans ambiguïté.
+\paragraph{Prémices} Soit l'automate $A$, d'alphabet $\Sigma = \{a,b,c\}$, qui reconnait le langage 
+$L(A) = (abc \mid bac)$. Aucun symbole de reset n'est défini et nous utilisons une approche
+multi-classe pour créer les labels du dataset.
+
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \resizebox{1\textwidth}{!}{
+            \begin{tikzpicture}[
+                vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+            ]
+
+            \node[vertex] (0)	  								  {0};
+            \node[vertex] (1a)  [above right=1.5cm and 2cm of 0]  {1a};
+            \node[vertex] (1b)  [below right=1.5cm and 2cm of 0]  {1b};
+            \node[vertex] (2ab)  [right=1cm and 2cm of 1a]        {2ab};
+            \node[vertex] (2ba)  [right=2cm of 1b]                {2ba};
+            \node[vertex] (3abc)  [right=2cm of 2ab, double]      {3abc};
+            \node[vertex] (3bac)  [right=2cm of 2ba, double]      {3bac};
+
+
+            \draw[-stealth] (0) -- (1b) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (0) -- (1a) node[midway, below] {\texttt{a}};
+
+            \draw[-stealth] (1a) -- (2ab) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (1a) .. controls +(-0.5,1) and +(0.5,1) .. (1a) node[midway, above] {\texttt{a}};
+            
+            \draw[-stealth] (1b) -- (2ba) node[midway, below] {\texttt{a}};
+            \draw[-stealth] (1b) .. controls +(-0.5,-1) and +(0.5,-1) .. (1b) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (2ab) -- (3abc) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (2ab) -- (1b) node[pos=0.2, below] {\texttt{b}};
+            \draw[-stealth] (2ab) .. controls +(1.5,-1) and +(1.5,1) .. (2ba) node[midway, right] {\texttt{a}};
+
+            \draw[-stealth] (2ba) -- (3bac) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (2ba) -- (2ab) node[pos=0.2, right] {\texttt{b}};
+            \draw[-stealth] (2ba) -- (1a) node[pos=0.2, right] {\texttt{a}};
+
+            \draw[-stealth] (3abc) -- (1b) node[pos=0.2, above] {\texttt{b}};
+            \draw[-stealth] (3abc) .. controls +(-3,1) .. (1a) node[midway, above] {\texttt{a}};
+
+            \draw[-stealth] (3bac) -- (1a) node[pos=0.2, above] {\texttt{a}};
+            \draw[-stealth] (3bac) .. controls +(-3,-1.5) .. (1b) node[midway, above] {\texttt{b}};
+            \end{tikzpicture}
+        }
+        \caption{Automate de référence}
+        \label{fig:ref-safe}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \resizebox{1\textwidth}{!}{
+            \begin{tikzpicture}[
+                vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+            ]
+
+            \node[vertex] (1)	  								  {0};
+            \node[vertex] (0)	[above right=2cm and 2cm of 1]    {1};
+            \node[vertex] (3)	[below right=2cm and 2cm of 1]    {3};
+            \node[vertex] (5)	[right=2cm of 3]                  {5};
+            \node[vertex] (2)	[right=2cm of 0]                  {2};
+            \node[vertex] (4)	[below right=2cm and 2cm of 2, double]    {4};
+
+            \draw[-stealth] (1) -- (0) node[midway, below] {\texttt{a}};
+            \draw[-stealth] (1) -- (3) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (0) .. controls +(-0.5,1) and +(0.5,1) .. (0) node[midway, above] {\texttt{a}};
+            \draw[-stealth] (0) -- (2) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (3) .. controls +(-0.5,-1) and +(0.5,-1) .. (3) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (3) -- (5) node[midway, below] {\texttt{a}};
+
+            \draw[-stealth] (5) -- (4) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (5) -- (2) node[midway, right] {\texttt{b}};
+            \draw[-stealth] (5) -- (0) node[pos=0.2, below] {\texttt{a}};
+
+            \draw[-stealth] (2) -- (4) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (2) .. controls +(0.5,-1) and +(0.5,1) .. (5) node[midway, right] {\texttt{a}};
+            \draw[-stealth] (2) -- (3) node[pos=0.2, below] {\texttt{b}};
+            
+            \draw[-stealth] (4) .. controls +(-1.5,-4) .. (3) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (4) .. controls +(-1,4) .. (0) node[midway, below] {\texttt{a}};
+
+            \end{tikzpicture}
+        }
+        \caption{Automate réduit}
+        \label{fig:reduced}
+    \end{subfigure}
+    \caption{Comparaison entre l'automate de référence et l'automate réduit. Les transitions manquantes vont vers l'état 0 en "c".}
+    \label{fig:safe}
+\end{figure}
+
+
+\paragraph{Modèle GRU} Après entrainement, le F1-score macro du modèle GRU est de 0.48, ce qui est relativement mauvais. 
+Cependant, on peut avoir une autre lecture en regardant les F1-scores par classes.
+Sur la figure \ref{tab:f1-safe}, on remarque que le modèle est très performant pour la classe 0 et la classe 3, mais il ne 
+parvient pas à reconnaitre les classes intermédiaires. Cela peut s'expliquer par la faible taille des mots, par prudence, le modèle 
+préfère attendre de reconnaitre un mot entier plutôt que de faire des prédictions erronées sur les classes intermédiaires. 
+Le point le plus important est que le modèle reconnait parfaitement les mots, avec 0 faux négatifs et faux positifs.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        Macro & Classe 0 & Classe 1 & Classe 2 & Classe 3 \\
+        \hline
+        0.48 & 0.91 & 0.00 & 0.00 & 1.00 \\
+        \hline
+    \end{tabular}
+    \caption{F1-Score pour chaque classe}
+    \label{tab:f1-safe}
+\end{figure}
+
+\paragraph{Automate} Le nombre de clusters utilisé pour la reconstruction de l'automate influe peu sur les performances mais
+influence fortement l'isomorphisme entre l'automate de référence et l'automate reconstruit.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|c|c|}
+        \hline
+        \multirow{2}{*}{Clusters} & \multicolumn{5}{|c|}{F1-Score} & \multirow{2}{*}{Isomorphisme} \\
+        \cline{2-6}
+         & Macro & Classe 0 & Classe 1 & Classe 2 & Classe 3 & \\
+        \hline
+        20 & 0.48 & 0.91 & 0.00 & 0.00 & 1.00 & Presque \\
+        \hline
+        100 & 0.48 & 0.91 & 0.00 & 0.00 & 1.00 & Non \\
+        \hline
+        1000 & 0.48 & 0.91 & 0.00 & 0.00 & 1.00 & Oui \\
+        \hline
+    \end{tabular}
+    \caption{Impact du nombre de clusters sur les performances et l'isomorphisme}
+    \label{tab:clusters-safe}
+\end{figure}
+
+
+Dans tous les cas, l'automate possède les mêmes performances que le modèle GRU, mais seul l'automate de 1000 états réduit est
+isomorphe à l'automate de référence. 
+\par On observe également que l'automate de 20 états réduit permet de retrouver un automate 
+quasi-isomorphe. Sur la figure \ref{fig:20-clusters}, on remarque que l'automate reconstruit possède un état
+"en dehors" de l'automate principal, l'état -1, qui correspond à l'état initial du GRU. Cet état n'a pas un grand impact 
+sur l'automate, il est inaccessible depuis les autres états. De plus, si -1 est l'état initial, alors l'automate 
+reconnait un autre langage, par exemple "ac" ou "bc".
+\par Cependant, si on considère l'état 1 comme état initial, alors l'automate reconnait exactement le même langage. Aussi, si on
+retire l'état -1, inatteignable depuis l'état 1, alors il est possible d'établir une relation d'isomorphisme entre l'automate 
+de référence et cet automate.
+
+
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \resizebox{0.7\textwidth}{!}{
+            \begin{tikzpicture}[
+                vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+            ]
+
+            \node[vertex] (1)	  								          {-1};
+            \node[vertex] (0)	[above right=2cm and 2cm of 1]            {0};
+            \node[vertex] (3)	[below right=2cm and 2cm of 1]            {2};
+            \node[vertex] (5)	[right=2cm of 3]                          {3};
+            \node[vertex] (2)	[right=2cm of 0]                          {4};
+            \node[vertex] (4)	[below right=2cm and 2cm of 2, double]    {1};
+
+            \draw[-stealth] (1) -- (0) node[midway, below] {\texttt{a}};
+            \draw[-stealth] (1) -- (3) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (0) .. controls +(-0.5,1) and +(0.5,1) .. (0) node[midway, above] {\texttt{a}};
+            \draw[-stealth] (0) -- (2) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (3) .. controls +(-0.5,-1) and +(0.5,-1) .. (3) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (3) -- (5) node[midway, below] {\texttt{a}};
+
+            \draw[-stealth] (5) -- (4) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (5) -- (2) node[midway, right] {\texttt{b}};
+            \draw[-stealth] (5) -- (0) node[pos=0.2, below] {\texttt{a}};
+
+            \draw[-stealth] (2) -- (4) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (2) .. controls +(0.5,-1) and +(0.5,1) .. (5) node[midway, right] {\texttt{a}};
+            \draw[-stealth] (2) -- (3) node[pos=0.2, below] {\texttt{b}};
+            
+            \draw[-stealth] (4) .. controls +(-1.5,-4) .. (3) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (4) .. controls +(-1,4) .. (0) node[midway, below] {\texttt{a}};
+
+            \end{tikzpicture}
+        }
+        \caption{Automate reconstruit avec 1000 clusters, les transitions manquantes vont vers l'état -1 en "c".}
+        \label{fig:1000-clusters}
+    \end{subfigure}
+        \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \resizebox{0.7\textwidth}{!}{
+            \begin{tikzpicture}[
+                vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+            ]
+
+            \node[vertex] (1)	  								          {1};
+            \node[vertex] (0)	[above right=2cm and 2cm of 1]            {0};
+            \node[vertex] (3)	[below right=2cm and 2cm of 1]            {3};
+            \node[vertex] (5)	[right=2cm of 3]                          {5};
+            \node[vertex] (2)	[right=2cm of 0]                          {2};
+            \node[vertex] (4)	[below right=2cm and 2cm of 2, double]    {4};
+            \node[vertex] (-1)	[right=2cm of 2]                          {-1};
+
+            \draw[-stealth] (1) -- (0) node[midway, below] {\texttt{a}};
+            \draw[-stealth] (1) -- (3) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (0) .. controls +(-0.5,1) and +(0.5,1) .. (0) node[midway, above] {\texttt{a}};
+            \draw[-stealth] (0) -- (2) node[midway, below] {\texttt{b}};
+
+            \draw[-stealth] (3) .. controls +(-0.5,-1) and +(0.5,-1) .. (3) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (3) -- (5) node[midway, below] {\texttt{a}};
+
+            \draw[-stealth] (5) -- (4) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (5) -- (2) node[midway, right] {\texttt{b}};
+            \draw[-stealth] (5) -- (0) node[pos=0.2, below] {\texttt{a}};
+
+            \draw[-stealth] (2) -- (4) node[midway, below] {\texttt{c}};
+            \draw[-stealth] (2) .. controls +(0.5,-1) and +(0.5,1) .. (5) node[midway, right] {\texttt{a}};
+            \draw[-stealth] (2) -- (3) node[pos=0.2, below] {\texttt{b}};
+
+            \draw[-stealth] (-1) -- (2) node[midway, below] {\texttt{a,b}};
+            
+            \draw[-stealth] (4) .. controls +(-1.5,-4) .. (3) node[midway, below] {\texttt{b}};
+            \draw[-stealth] (4) .. controls +(-1,4) .. (0) node[midway, below] {\texttt{a}};
+
+            \end{tikzpicture}
+        }
+        \caption{Automate reconstruit avec 20 clusters, les transitions manquantes vont vers l'état 1 en "c".}
+        \label{fig:20-clusters}
+    \end{subfigure}
+    \caption{Comparaison entre les automates reconstruits.}
+\end{figure}
+
+
+\newpage
+\subsection{Chevauchement}
+
+\subsubsection{Avec reset}
+
+\paragraph{Prémisses}  Soit l'automate $B$, d'alphabet $\Sigma = \{a,b,c\}$, qui reconnait le langage 
+$L(B) = (aab \mid bab \mid aba)$. On définit "c" comme symbole de reset et nous utilisons une 
+approche multi-classe pour créer les labels du dataset.
+
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \resizebox{1\textwidth}{!}{
+        \begin{tikzpicture}[
+            vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+        ]
+
+        \node[vertex] (0)	  								  {0};
+        \node[vertex] (1a)  [above right=1.5cm and 2cm of 0]  {1a};
+        \node[vertex] (1b)  [below right=1.5cm and 2cm of 0]  {1b};
+        \node[vertex] (2ab)  [above right=1cm and 2cm of 1a]  {2ab};
+        \node[vertex] (2aa)  [below right=1cm and 2cm of 1a]  {2aa};
+        \node[vertex] (2ba)  [right=2cm of 1b]                {2ba};
+        \node[vertex] (3aba)  [right=2cm of 2ab, double]              {3aba};
+        \node[vertex] (3aab)  [right=2cm of 2aa, double]              {3aab};
+        \node[vertex] (3bab)  [right=2cm of 2ba, double]              {3bab};
+
+
+
+        \draw[-stealth] (0) -- (1a) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (0) -- (1b) node[midway, below] {\texttt{b}};
+
+        \draw[-stealth] (1a) -- (2ab) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (1a) -- (2aa) node[pos=0.2, below] {\texttt{a}};
+        
+        \draw[-stealth] (1b) -- (2ba) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (1b) .. controls +(-0.5,-1) and +(0.5,-1) .. (1b) node[midway, above] {\texttt{b}};
+
+        \draw[-stealth] (2ab) -- (3aba) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (2ab) -- (1b) node[pos=0.8, above, left] {\texttt{b}};
+
+
+        \draw[-stealth] (2aa) .. controls +(-0.5,1) and +(0.5,1) .. (2aa) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (2aa) -- (3aab) node[midway, above] {\texttt{b}};
+        
+
+        \draw[-stealth] (2ba) -- (3bab) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (2ba) -- (2aa) node[midway, left] {\texttt{a}};
+
+
+        \end{tikzpicture}
+        }
+        \caption{Automate de référence}
+        \label{fig:ref-chevauchement}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \resizebox{1\textwidth}{!}{
+        \begin{tikzpicture}[
+            vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+        ]
+
+        \node[vertex] (0)	  			               {1};
+        \node[vertex] (1)  [below=2cm of 0]            {0};
+        \node[vertex] (4)  [right=2cm of 0]            {2};
+        \node[vertex] (3)  [right=2cm of 1]            {3};
+        \node[vertex] (-1) [right=2cm of 3]            {4};
+        \node[vertex] (2)  [right=2cm of -1, double]   {5};
+        \node[vertex] (5)  [above=2cm of 2, double]    {6};
+
+
+        \draw[-stealth] (1) -- (0) node[midway, right] {\texttt{a}};
+        \draw[-stealth] (1) -- (3) node[midway, below] {\texttt{b}};
+
+        \draw[-stealth] (0) -- (4) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (0) .. controls +(-1.5,-4.5) .. (-1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (4) -- (3) node[midway, left] {\texttt{b}};
+        \draw[-stealth] (4) -- (5) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (5) .. controls +(0.5,-1) and +(0.5,1) .. (2) node[midway, right] {\texttt{b}};
+        \draw[-stealth] (5) -- (-1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (2) .. controls (6,-2) .. (3) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (2) .. controls +(-0.5,1) and +(-0.5,-1) .. (5) node[midway, left] {\texttt{a}};
+
+        \draw[-stealth] (3) .. controls +(-0.5,-1) and +(0.5,-1) .. (3) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (3) -- (-1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (-1) .. controls +(-0.5,-1) and +(0.5,-1) .. (-1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (-1) -- (2) node[midway, above] {\texttt{b}};
+
+        \end{tikzpicture}
+        }
+    \caption{Automate réduit}
+    \label{fig:reduced-chevauchement}
+    \end{subfigure}
+    \caption{Comparaison entre l'automate de référence et l'automate réduit. Les transitions manquantes vont vers l'état 0 en "c".}
+    \label{fig:auto-chevauchement}
+\end{figure}
+
+
+
+
+\paragraph{Modèle GRU} Ici, on observe le même phénomène que pour l'expérience précédente, le modèle est très performant pour la
+dernière classe et plutôt performant pour la classe 0, mais il ne parvient pas à reconnaitre les classes intermédiaires.
+Légère augmentation sur la classe 1, passant de 0.00 à 0.27, mais rien de significatif.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        Macro & Classe 0 & Classe 1 & Classe 2 & Classe 3 \\
+        \hline
+        0.54 & 0.89 & 0.26 & 0.00 & 1.00 \\
+        \hline
+    \end{tabular}
+    \caption{F1-Score pour chaque classe}
+    \label{tab:f1-chevauchement}
+\end{figure}
+
+\paragraph{Automate} L'automate reconstruit réussit à extraire la connaissance du modèle GRU. Malgré des nombres de clusters
+différents, les performances sont similaires à celles du modèle GRU. Seule la version avec 20 clusters performe moins sur la
+classe 1 et très légérement moins sur la classe 3, faisant baisser le F1-score macro de 0.54 à 0.51.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|c|c|}
+        \hline
+        \multirow{2}{*}{Clusters} & \multicolumn{5}{|c|}{F1-Score} & \multirow{2}{*}{Isomorphisme} \\
+        \cline{2-6}
+         & Macro & Classe 0 & Classe 1 & Classe 2 & Classe 3 & \\
+        \hline
+        20 & 0.51 & 0.91 & 0.14 & 0.00 & 0.99 & Oui \\
+        \hline
+        100 & 0.54 & 0.88 & 0.26 & 0.00 & 1.00 & Presque \\
+        \hline
+        1000 & 0.54 & 0.88 & 0.26 & 0.00 & 1.00 & Oui \\
+        \hline
+    \end{tabular}
+    \caption{Impact du nombre de clusters sur les performances et l'isomorphisme}
+    \label{tab:clusters-chevauchement}
+\end{figure}
+
+Au niveau de l'isomorphisme, on remarque que les automates de 20 et 1000 clusters sont isomorphes à la réduction de $B$.
+Cette fois, l'état -1 n'est pas "en dehors" de l'automate, il fait partie intégrante de l'automate et participe à la 
+reconnaissance du langage. Cependant, il ne joue toujours pas le rôle d'état initial, sinon l'automate 
+reconnaitrait un langage différent, incluant des mots comme "b" ou "ab". En considérant l'état 1 comme état initial, 
+l'automate reconstruit reconnait alors le bon langage.
+\par Pour l'automate de 100 clusters, on observe aussi un "quasi-isomorphisme", avec un état -1 inaccessible depuis les autres états
+et qui ne joue pas le rôle d'état initial.
+
+
+
+
+
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \resizebox{1\textwidth}{!}{
+        \begin{tikzpicture}[
+            vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+        ]
+
+        \node[vertex] (0)	  			               {0};
+        \node[vertex] (1)  [below=2cm of 0]            {1};
+        \node[vertex] (4)  [right=2cm of 0]            {4};
+        \node[vertex] (3)  [right=2cm of 1]            {3};
+        \node[vertex] (-1) [right=2cm of 3]            {-1};
+        \node[vertex] (2)  [right=2cm of -1, double]   {2};
+        \node[vertex] (5)  [above=2cm of 2, double]    {5};
+
+
+        \draw[-stealth] (1) -- (0) node[midway, right] {\texttt{a}};
+        \draw[-stealth] (1) -- (3) node[midway, below] {\texttt{b}};
+
+        \draw[-stealth] (0) -- (4) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (0) .. controls +(-1.5,-4.5) .. (-1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (4) -- (3) node[midway, left] {\texttt{b}};
+        \draw[-stealth] (4) -- (5) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (5) .. controls +(0.5,-1) and +(0.5,1) .. (2) node[midway, right] {\texttt{b}};
+        \draw[-stealth] (5) -- (-1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (2) .. controls (6,-2) .. (3) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (2) .. controls +(-0.5,1) and +(-0.5,-1) .. (5) node[midway, left] {\texttt{a}};
+
+        \draw[-stealth] (3) .. controls +(-0.5,-1) and +(0.5,-1) .. (3) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (3) -- (-1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (-1) .. controls +(-0.5,-1) and +(0.5,-1) .. (-1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (-1) -- (2) node[midway, above] {\texttt{b}};
+        \end{tikzpicture}
+        }
+        \caption{Automate reconstruit avec 20 clusters}
+        \label{fig:20-clusters-chevauchement}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \resizebox{1\textwidth}{!}{
+        \begin{tikzpicture}[
+            vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+        ]
+
+        \node[vertex] (0)	  			               {0};
+        \node[vertex] (1)  [below=2cm of 0]            {1};
+        \node[vertex] (2)  [right=2cm of 0]            {2}; %4
+        \node[vertex] (3)  [right=2cm of 1]            {3};
+        \node[vertex] (5) [right=2cm of 3]            {5}; %-1
+        \node[vertex] (4)  [right=2cm of 5, double]   {4}; %2
+        \node[vertex] (6)  [above=2cm of 4, double]    {6}; %5
+        \node[vertex] (-1) [below right=1cm and 1cm of 2] {-1};
+
+
+        \draw[-stealth] (1) -- (0) node[midway, right] {\texttt{a}};
+        \draw[-stealth] (1) -- (3) node[midway, below] {\texttt{b}};
+
+        \draw[-stealth] (0) -- (2) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (0) .. controls +(-1.5,-4.5) .. (5) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (2) -- (3) node[midway, left] {\texttt{b}};
+        \draw[-stealth] (2) -- (6) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (6) .. controls +(0.5,-1) and +(0.5,1) .. (4) node[midway, right] {\texttt{b}};
+        \draw[-stealth] (6) -- (5) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (4) .. controls (6,-2) .. (3) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (4) .. controls +(-0.5,1) and +(-0.5,-1) .. (6) node[midway, left] {\texttt{a}};
+
+        \draw[-stealth] (3) .. controls +(-0.5,-1) and +(0.5,-1) .. (3) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (3) -- (5) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (5) .. controls +(-0.5,-1) and +(0.5,-1) .. (5) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (5) -- (4) node[midway, above] {\texttt{b}};
+
+        \draw[-stealth] (-1) -- (2) node[midway, above] {\texttt{b}};
+        \draw[-stealth] (-1) -- (5) node[midway, above] {\texttt{a}};
+
+        \end{tikzpicture}
+        }
+        \caption{Automate reconstruit avec 100 clusters}
+    \end{subfigure}
+    \caption{Automates reconstruits\\Les transitions manquantes vont vers l'état 1 en "c"}
+\end{figure}
+
+\subsubsection{Sans reset}
+\paragraph{Prémisses}  Soit l'automate $B'$, d'alphabet $\Sigma = \{a,b\}$, qui reconnait le langage 
+$L(B') = (aab \mid bab \mid aba)$. On ne définit pas de symbole de reset et utilise une 
+approche multi-classe pour créer les labels du dataset.
+
+\paragraph{Résultats} Contrairement aux expériences précédentes, le modèle GRU à des difficultés à reconnaitre le langages.
+Le F1-score macro du modèle est de 0.32, contre 0.54 avec reset, et celui de la classe 3 chute à 0.74, loin des 1.00. L'automate à 20 états réduit ne fait pas mieux puisqu'il enregistre des F1-scores similaire.
+
+\paragraph{Hypothèse} Les résultats suggèrent que le symbole de reset joue un rôle crucial dans l'apprentissage du modèle.
+Nous avons fait l'hypothèse qu'un symbole comme celui-ci permet d'obtenir des labels plus structurés, facilitant ainsi
+l'entrainement. En effet, sans reset, il est possible de voir apparaitre un phénomène d'écrasement de la classe dans les labels.
+
+\begin{example}{Exemple : écrasement de classe}
+\\ Soit le mot "aabab", on peut le découper de différentes façons pour trouver les motifs "aab", "aba" et "bab".
+Avec une approche multi-classe, on voit qu'il va y avoir un conflit de labels. Dans notre cas, l'algo d'étiquetage
+donnerait la trace suivante :
+\begin{itemize}
+    \item D'abord, "12300" pour "aab".
+    \item Puis, "11230" pour "aba".
+    \item Enfin, "11123" pour "bab".
+\end{itemize}
+\end{example}
+
+Ce conflit de labels peut rendre l'apprentissage plus difficile car on perd beaucoup d'information en écrasant 
+les autres classes et peut être à l'origine de la baisse de performance du modèle GRU, et donc de l'automate reconstruit.
+
+\subsection{Avancées}
+
+\paragraph{Prémisses} Soit l'automate $C$, d'alphabet $\Sigma = \{a,b,c,d,e,f\}$, qui reconnait le langage 
+$L(C) = (abcd \mid abce \mid eeee \mid eead)$. On définit "f" comme symbole de reset et 
+nous utilisons une approche multi-classe pour créer les labels du dataset.
+
+\begin{figure}[ht]
+        \centering
+        \resizebox{0.5\textwidth}{!}{
+        \begin{tikzpicture}[
+            vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+        ]
+
+        \node[vertex] (0)	  			               {0};
+        \node[vertex] (11)  [below=2cm of 0]           {11};
+        \node[vertex] (1)  [right=2cm of 11]            {1};
+        \node[vertex] (4)  [below=2cm of 1]            {4};
+        \node[vertex] (6)  [right=2cm of 1]            {6};
+        \node[vertex] (3)  [left=2cm of 4, double]             {3};
+        \node[vertex] (2)  [left=2cm of 3]             {2};
+        \node[vertex] (5)  [left=2cm of 0]            {5};
+        \node[vertex] (7)  [above=2cm of 5]            {7};
+        \node[vertex] (9)  [below=2cm of 5, double]            {9};
+        \node[vertex] (8)  [right=2cm of 7, double]            {8};
+
+
+        
+        \draw[-stealth] (0) -- (11) node[midway, right] {\texttt{e}};
+        \draw[-stealth] (0) -- (1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (11) -- (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (11) -- (2) node[midway, below] {\texttt{e}};
+
+        \draw[-stealth] (1) .. controls +(-0.5,1) and +(0.5,1) .. (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (1) -- (4) node[midway, left] {\texttt{b}};
+        \draw[-stealth] (1) .. controls +(-1,-0.5) and +(1,-0.5) .. (11) node[midway, below] {\texttt{e}};
+
+        \draw[-stealth] (4) -- (11) node[pos=0.2, right] {\texttt{e}};
+        \draw[-stealth] (4) -- (6) node[midway, right] {\texttt{c}};
+        \draw[-stealth] (4) .. controls +(1,1) and +(1,-1) .. (1) node[midway, left] {\texttt{a}};
+
+        \draw[-stealth] (6) -- (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (6) -- (8) node[midway, above] {\texttt{d}};
+        \draw[-stealth] (6) .. controls +(-0.5,-5) and +(1,-1) .. (3) node[midway, below] {\texttt{e}}; 
+
+        \draw[-stealth] (3) -- (2) node[midway, above] {\texttt{e}};
+        \draw[-stealth] (3) -- (1) node[pos=0.2, above] {\texttt{a}};
+
+        \draw[-stealth] (2) .. controls +(-2,-0.5) and +(-2,-0.5) .. (7) node[midway, left] {\texttt{a}};
+        \draw[-stealth] (2) .. controls +(-1,1) and +(-1,-1) .. (5) node[midway, left] {\texttt{e}};
+
+        \draw[-stealth] (9) .. controls +(-0.5,-1) and +(0.5,-1) .. (9) node[midway, above] {\texttt{e}};
+        \draw[-stealth] (9) .. controls +(-1,1) and +(-1,-1) .. (7) node[pos=0.5, left] {\texttt{a}};
+        
+        \draw[-stealth] (5) -- (9) node[midway, left] {\texttt{e}};
+        \draw[-stealth] (5) -- (7) node[pos=0.5, left] {\texttt{a}};
+        
+        \draw[-stealth] (7) -- (8) node[midway, above] {\texttt{d}};
+        \draw[-stealth] (7) .. controls +(1,0) and +(0,1) .. (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (7) .. controls +(0.5,-1) and +(-1,1) .. (11) node[pos=0.3, right] {\texttt{e}};
+        \draw[-stealth] (7) .. controls +(-4,0) and +(-10,-5) .. (4) node[pos=0.3, left] {\texttt{b}};
+
+        \draw[-stealth] (8) -- (1) node[midway, right] {\texttt{a}};
+        \draw[-stealth] (8) .. controls +(-1,0) and +(-1,1) .. (11) node[midway, left] {\texttt{e}};
+
+        \end{tikzpicture}
+        }
+        \caption{Automate réduit. Les transitions manquantes vont vers l'état 0.}
+\end{figure}
+
+\paragraph{Modèle GRU} Une fois de plus, le modèle enregistre de bonnes performances
+pour la classe 4, mais peine un peu plus sur les classes intermédiaires.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|c|}
+        \hline
+        Macro & Classe 0 & Classe 1 & Classe 2 & Classe 3 & Classe 4 \\
+        \hline
+        0.48 & 0.99 & 0.00 & 0.00 & 0.41 & 1.00 \\
+        \hline
+    \end{tabular}
+    \caption{F1-Score pour chaque classe}
+    \label{tab:f1-advanced}
+\end{figure}
+
+\paragraph{Automate} Du coté de l'automate reconstruit, pas de surprise, les performances sont similaires à celles du modèle GRU.
+De mémoire, l'automate à 20 états réduit avait de très mauvaise performances mais je n'ai pas encore retrouvé les résultats.
+
+\begin{figure}[ht]
+    \centering
+    \resizebox{1\textwidth}{!}{
+    \begin{tabular}{|c|c|c|c|c|c|c|c|}
+        \hline
+        \multirow{2}{*}{Clusters} & \multicolumn{6}{|c|}{F1-Score} & \multirow{2}{*}{Isomorphisme} \\
+        \cline{2-7}
+         & Macro & Classe 0 & Classe 1 & Classe 2 & Classe 3 & Classe 4 & \\
+        \hline
+        100 & 0.48 & 1.0 & 0.00 & 0.00 & 0.42 & 0.99 & Non \\
+        \hline
+        500 & 0.49 & 1.0 & 0.00 & 0.00 & 0.43 & 1.00 & Non \\
+        \hline
+        1000 & 0.49 & 1.0 & 0.00 & 0.00 & 0.43 & 1.00 & Non \\
+        \hline
+    \end{tabular}
+    }
+    \caption{Impact du nombre de clusters sur les performances et l'isomorphisme}
+    \label{tab:clusters-advanced}
+\end{figure}
+
+Au niveau de l'isomorphisme, aucun automate n'est isomorphe à l'automate réduit de $C$. Pour l'automate à 500 états, on observe des divergences sur quelques
+transitions, notamment sur la transitions en "a" de l'état 9, qui va dans l'état 1 plutôt que dans l'état 7. Ce petit changement conduit à une différence 
+de traitement pour le mot "eeeead", dont le second motif, "eead", n'est pas reconnu par l'automate reconstruit. 
+\par Il en va de même pour celui de 1000 états.
+Quelques transitions différentes suffisent à modifier le langage reconnu puisque, dans le mot "abcdabcd", la première occurrence de "abcd" est reconnue, 
+mais pas la seconde.
+
+\begin{figure}[ht]
+        \centering
+        \resizebox{0.4\textwidth}{!}{
+        \begin{tikzpicture}[
+            vertex/.style={circle, draw=gray, fill=white, very thick, minimum size=7mm, text width=0.5cm, align=center},
+        ]
+
+        \node[vertex] (-1)	  			               {-1};
+        \node[vertex] (0)  [below=2cm of -1]           {0};
+        \node[vertex] (1)  [right=2cm of 0]            {1};
+        \node[vertex] (4)  [below=2cm of 1]            {4};
+        \node[vertex] (6)  [right=2cm of 1]            {6};
+        \node[vertex] (3)  [left=2cm of 4, double]             {3};
+        \node[vertex] (2)  [left=2cm of 3]             {2};
+        \node[vertex] (5)  [left=2cm of -1]            {5};
+        \node[vertex] (7)  [above=2cm of 5]            {7};
+        \node[vertex] (9)  [below=2cm of 5, double]            {9};
+        \node[vertex] (8)  [right=2cm of 7, double]            {8};
+
+
+        
+        \draw[-stealth] (-1) -- (0) node[midway, right] {\texttt{e}};
+        \draw[-stealth] (-1) -- (1) node[midway, above] {\texttt{a}};
+
+        \draw[-stealth] (0) -- (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (0) -- (2) node[midway, below] {\texttt{e}};
+
+        \draw[-stealth] (1) .. controls +(-0.5,1) and +(0.5,1) .. (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (1) -- (4) node[midway, left] {\texttt{b}};
+        \draw[-stealth] (1) .. controls +(-1,-0.5) and +(1,-0.5) .. (0) node[midway, below] {\texttt{e}};
+
+        \draw[-stealth] (4) -- (0) node[midway, right] {\texttt{e}};
+        \draw[-stealth] (4) -- (6) node[midway, right] {\texttt{c}};
+        \draw[-stealth] (4) .. controls +(1,1) and +(1,-1) .. (1) node[midway, left] {\texttt{a}};
+
+        \draw[-stealth] (6) -- (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (6) -- (8) node[midway, above] {\texttt{d}};
+        \draw[-stealth] (6) .. controls +(-0.5,-5) and +(1,-1) .. (3) node[midway, below] {\texttt{e}}; 
+
+        \draw[-stealth] (3) -- (2) node[midway, above] {\texttt{e}};
+
+        \draw[-stealth] (2) .. controls +(-2,-0.5) and +(-2,-0.5) .. (7) node[midway, left] {\texttt{a}};
+        \draw[-stealth] (2) .. controls +(-1,1) and +(-1,-1) .. (5) node[midway, left] {\texttt{e}};
+
+        \draw[-stealth] (9) .. controls +(-0.5,-1) and +(0.5,-1) .. (9) node[midway, above] {\texttt{e}};
+        \draw[-stealth] (9) .. controls +(1,1) and +(-1,1) .. (1) node[pos=0.3, above] {\texttt{a}};
+        
+        \draw[-stealth] (5) -- (9) node[midway, left] {\texttt{e}};
+        \draw[-stealth] (5) .. controls +(1,-0.5) and +(-1,1) .. (1) node[pos=0.3, above] {\texttt{a}};
+        
+        \draw[-stealth] (7) -- (8) node[midway, above] {\texttt{d}};
+        \draw[-stealth] (7) .. controls +(1,0) and +(0,1) .. (1) node[midway, above] {\texttt{a}};
+        \draw[-stealth] (7) .. controls +(0.5,-1) and +(-1,1) .. (0) node[pos=0.3, right] {\texttt{e}};
+        \draw[-stealth] (7) .. controls +(-4,0) and +(-10,-5) .. (4) node[pos=0.3, left] {\texttt{b}};
+
+        \draw[-stealth] (8) -- (1) node[midway, right] {\texttt{a}};
+        \draw[-stealth] (8) .. controls +(-1,0) and +(-1,1) .. (0) node[midway, left] {\texttt{e}};
+
+        \end{tikzpicture}
+        }
+        \caption{Automate reconstruit avec 500 clusters. Les transitions manquantes vont vers l'état -1.}
+\end{figure}
+
+\section{Conclusion}
+
+\par Nous avons vu au travers de ces différentes expériences que l'extraction d'automate à partir de modèles GRU est un processus délicat. Les automates
+reconstruit donnent, pour la plupart, des performances similaires ou très proches de celles du modèle GRU, mais il est difficile d'obtenir un 
+automate isomorphe à l'automate de référence. Ces problèmes d'isomorphisme peuvent être liés à plusieurs facteurs, notamment la complexité 
+de l'automate de référence, la qualité de l'apprentissage du modèle GRU, ou encore l'écrasement de classe abordé plus tôt. De plus, on constate 
+souvent que l'état -1 est laissé "en dehors" de l'automate reconstruit, ce qui peut témoigner d'une faiblesse dans la manière de définir notre 
+état initial.
+\par Pour obtenir des résultats plus solides, il serait intéressant d'effectuer un benchmark plus complet, en testant différents types d'automates
+et en analysant plus en détail les facteurs qui peuvent influencer l'isomorphisme.
+\\
+\par Au niveau des "états d'oubli", on remarque que les automates reconstruits ont tendance à avoir un unique état d'oubli, qui est souvent l'état initial.
+Il agit comme un puits, vers lequel se dirigent les transitions qui ne sont pas utile à la reconnaissance d'un mot à un instant donné. Par exemple, 
+si un automate reconnait les mots "cab" et "cba", alors il est probable qu'après avoir vu "ca", il existe une transition de l'état courant vers
+l'état initial pour la lettre "a".
+
+
+\subsection{Perspectives}
+\par Pour aller plus loin, il est prévu d'explorer d'autres méthodes pour définir l'état initial de l'automate reconstruit, et de discuter de la 
+suppression de l'état -1, forcé dans la création des automates.
+\par Avec l'écrasement de classe, nous avons vu les limites de l'approche multi-classe pour créer les labels du dataset. Il serait intéressant 
+de poursuivre les recherches vers une approche multi-label, qui permettrait de conserver plus d'information dans les labels. On peut également envisager
+d'utiliser le numéro de l'état comme label, plutôt que la place de la lettre dans un motif. Avec cette expérience, on ne pourrait pas fournir plus 
+d'information, ce qui donnerait une idée des performances maximales que l'on peut espérer de notre approche.
+\par Enfin, l'expérience ultime serait de tester notre approche sur des automates avec des langages générés aléatoirement, pour se prémunir des
+biais liés à la structure de l'automate de référence qu'un humain pourrait inconsciemment introduire.
+
+
+\end{document}

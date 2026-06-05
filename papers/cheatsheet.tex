@@ -1,0 +1,80 @@
+\documentclass{article}
+\usepackage[dvipsnames]{xcolor}
+
+\newcommand{\cmd}[1]{\texttt{\textcolor{blue}{#1}}}
+
+\begin{document}
+
+\centerline{\Large\textbf{Cheatsheet}}
+
+\vspace{1cm}
+
+\noindent Commandes pour toy\_example.py : \\
+\begin{verbatim}
+toy_example.py [-h] -p PREFIX [-s STATES] [-l {bin,pos,state,ml}] [-d] [-m] [-a]
+[-i {brute,pred,voteF,voteQ,find}] [-dot] [-pm PATH_MODEL] [-dp PATH_DATA]    
+\end{verbatim}
+Pour avoir de l'aide sur les arguments, la commande \cmd{toy\_example.py -h} affiche la description de chaque argument.
+Renseigner un prefixe inconnu pour l'argument \cmd{-p} créera un nouveau dataset à partir d'un automate construit 
+aléatoirement, et sauvegardera le dataset et l'automate dans le dossier \texttt{test/} par défaut.
+Cependant, il est possible de construire un automate en particulier grâce à build\_auto.py :
+\begin{verbatim}
+    build_auto.py [-h] [-a ALPHABET] [-m MOTS] [-n NOM] [-t]
+\end{verbatim}
+
+\subsection*{Exemples d'utilisation}
+
+Pour toy\_example.py, la commande suivante :
+{\color{blue}
+\begin{verbatim}
+    toy_example.py -p FSM4 -s 100 -l ml -i pred -d -m -a
+\end{verbatim}}
+\begin{itemize}
+    \item créée un dataset à partir de l'automate FSM4
+    \item entraine un modèle de GRU en "multi-label"
+    \item extraie un automate de 100 états à partir du modèle entrainé
+\end{itemize}
+Tandis que la commande :
+{\color{blue}
+\begin{verbatim}
+    toy_example.py -p FSM4 -s 100 -l ml -dot
+\end{verbatim}}
+\begin{itemize}
+    \item test le modèle de GRU en "multi-label" sur l'automate FSM4
+    \item test l'automate extrait à partir du modèle de GRU
+    \item sauvegarde l'automate au format .dot
+\end{itemize}
+{\color{red}Attention :} lève une exception si le modèle ou l'automate ne sont pas créés.
+
+\vspace{0.3cm}
+\noindent Pour créer un automate qui reconnait abc,abd avec build\_auto.py :
+{\color{blue}
+\begin{verbatim}
+    build_auto.py -a abcd -m abc,abd -n auto_custom
+\end{verbatim}}
+\noindent Il est possible de visualiser l'automate sans le sauvegarder grâce à \cmd{-t}.
+
+
+
+
+\newpage
+\subsection*{Hyperparamètres}
+Les hyperparamètres gravient autour des différentes méthodes pour
+étiqueter les données ou pour trouver l'état initial de l'automate extrait.
+\\Méthodes d'étiquetage (argument \cmd{-l}) :
+\begin{itemize}
+    \item \textit{bin} : (binaire), 1 si la séquence est acceptée par l'automate, 0 sinon.
+    \item \textit{pos} : (multi-classe), position de la lettre dans la séquence, 0 si la lettre n'appartient à une sequence.
+    \item \textit{state} : (multi-classe), nom de l'état de l'automate atteint après la lecture de la lettre.
+    \item \textit{ml} : (multi-label), liste des positions de la lettre pour chaque séquence.
+\end{itemize}
+
+\noindent Méthodes pour trouver l'état initial de l'automate extrait (argument \cmd{-i}) :
+\begin{itemize}
+    \item \textit{brute} : (brute-force), on créer un cluster en plus à partir d'un vecteur nul pour représenter l'état initial de l'automate extrait.
+    \item \textit{pred} : (prédiction), la prédiction de kmeans nous permets d'associer le vecteur nul à un cluster existant.
+    \item \textit{voteF} : (vote finaux), on regarde les états successeurs des états finaux de l'automate extrait, celui qui est le plus représenté est considéré comme l'état initial.
+    \item \textit{voteQ} : (vote états), même méthode mais pour tous les états de l'automate extrait.
+    \item \textit{find} : (recherche), regarde le dernier état atteint par des séquences aléatoires, celui qui est le plus représenté est considéré comme l'état initial.
+\end{itemize}
+\end{document}

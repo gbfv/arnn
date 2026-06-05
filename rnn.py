@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.nn.utils.rnn import pad_sequence
-from utils import parse_log_file
+from utils import get_device, parse_log_file
 import pathlib
 from automaton import Automaton
 from logDataset import LogDataset
@@ -10,13 +10,13 @@ import pickle
 import json
 
 LETTERS = 257 #256 + 1 for padding
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = get_device()
 
 class ARNN(nn.Module):
     #hyperparametres
     embedding_dim = 10
     hidden_dim = 200
-    criterion = nn.BCELoss(reduction="none")  # Binary Cross-Entropy Loss pour les sorties binaires
+    criterion = nn.BCEWithLogitsLoss(reduction="none", pos_weight=torch.tensor(16.0))  # Binary Cross-Entropy Loss pour les sorties binaires
     epochs = 500
 
 
@@ -32,7 +32,7 @@ class ARNN(nn.Module):
     def forward(self, x, hidden_state=None):
         embedded = self.embedding(x)
         output, hidden_state = self.rnn(embedded, hidden_state)
-        output = torch.sigmoid(self.linear(output))
+        output = self.linear(output)
         return output, hidden_state
 
     def get_default_hidden_state(self):
@@ -77,7 +77,6 @@ class ARNN(nn.Module):
                 X, y, mask = X.to(DEVICE), y.to(DEVICE), mask.to(DEVICE)
                 num_chunks = X.size(1) // chunk_size if X.size(1) % chunk_size == 0 else X.size(1) // chunk_size + 1
                 hidden_state = None
-                outputs = None
 
                 for chunk_idx in range(num_chunks):
                     optimizer.zero_grad()  # Réinitialiser les gradients
@@ -86,32 +85,23 @@ class ARNN(nn.Module):
                     start = chunk_idx * chunk_size
                     end = min((chunk_idx + 1) * chunk_size, X.size(1))
                     op, hidden_state = self(X[:, start:end], hidden_state)  # Prédiction du modèle
-                    #outputs = torch.cat((outputs, op), dim=1) if outputs is not None else op
                     op = op.squeeze(2)
+
                     mask_chunk = mask[:, start:end]
                     loss_raw = ARNN.criterion(op, y[:, start:end])
                     masked_loss = (loss_raw * mask_chunk).sum() / (mask_chunk.sum() + 1e-8)
                     masked_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0) # évite les gradients explosifs
                     optimizer.step()
 
                     total_loss += masked_loss.item()
                     cpt += 1
-
-                """ outputs = outputs.squeeze(2)
-                padded_loss = ARNN.criterion(outputs, y)  # Calcul de la perte total (padding inclus)
-                masked_loss = padded_loss * mask # applique le masque pour ignorer les paddings
-                loss = masked_loss.sum() / mask.sum()  # Moyenne sur les éléments non padding
-                loss.backward()  # Rétropropagation
-                optimizer.step()  # Mise à jour des poids
-
-                total_loss += loss.item()
-                cpt += 1 """
             if (epoch + 1) % 10 == 0:
                 print(f'Epoch [{epoch+1}/{ARNN.epochs}], Loss: {total_loss/cpt:.4f}')
-            """ a += f"{total_loss / cpt};"
+            a += f"{total_loss / cpt};"
             
         with open("loss_rnn.csv", "a") as f:
-            f.write(a + "\n") """
+            f.write(a + "\n")
 
 
 
@@ -143,8 +133,9 @@ class ARNN(nn.Module):
             for chunk_idx in range(num_chunks):
                 start_idx = chunk_idx * chunk_size
                 end_idx = min((chunk_idx + 1) * chunk_size, X.size(0))
-                op, hidden_state = self(X[start_idx:end_idx], hidden_state)  # Prédiction du modèless
-                outputs = torch.cat((outputs, op), dim=0) if outputs is not None else op
+                op, hidden_state = self(X[start_idx:end_idx], hidden_state)  # Prédiction du modèles
+                proba = torch.sigmoid(op) # Convertir les logits en probabilités
+                outputs = torch.cat((outputs, proba), dim=0) if outputs is not None else proba
         return outputs #raw output
 
     #avoir une fonction predict_batch ? Pour le cas où X = [sample, seq_len, features] au lieu de [seq_len, features]
@@ -192,7 +183,7 @@ def pad_batch(batch):
 
 
 if __name__ == "__main__":
-    training_files = ["kernel32.log", "msvcr100.log", "user32.log", "ntdll.log", "libcrypto.log", "firewallAPI.log", "ws2_32.log", "signdrv.log", "cmdext.log", "gdi32.log"]
+    """training_files = ["kernel32.log", "msvcr100.log", "user32.log", "ntdll.log", "libcrypto.log", "firewallAPI.log", "ws2_32.log", "signdrv.log", "cmdext.log", "gdi32.log"]
     testing_files = ["data/ntdll.log"]
     model_pth = "models/KMU.500.pth"
 
@@ -258,7 +249,7 @@ if __name__ == "__main__":
     ob_dict = dict(sorted(ob_dict.items(), key=lambda x: x[1], reverse=True))
     print(f"États d'oubli : {oblivion}")
     for k,v in ob_dict.items():
-        print(f"  État {k} : {v} fois ({v/nb_oblivion*100:.2f}%)")
+        print(f"  État {k} : {v} fois ({v/nb_oblivion*100:.2f}%)") """
 
 
     """ finals = A.path_to_finals(init_state=50)
