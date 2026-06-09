@@ -4,7 +4,8 @@ import torch.optim as optim
 from sklearn.metrics import f1_score
 from utils import get_device
 
-
+from log_custom import add_log
+import time
 
 LETTERS = 6
 DEVICE = get_device()
@@ -113,6 +114,7 @@ class TOY_GRU(nn.Module):
 
         # Boucle d'entraînement
         for epoch in range(TOY_GRU.epochs):
+            time_begin_epoch = time.time()
             epoch_loss = 0
             cpt = 0
             for X, y, _ in dataloader:
@@ -141,6 +143,9 @@ class TOY_GRU(nn.Module):
 
                     epoch_loss += loss.item()
                     cpt += 1
+            time_end_epoch = time.time()
+            add_log("epoch_time","epoch_time.log",f"EPOCH:{epoch},TIME:{time_end_epoch - time_begin_epoch}")
+            add_log("epoch_loss","epoch_loss.log",f"EPOCH:{epoch},LOSS:{epoch_loss/cpt}")
             if epoch_loss/cpt < 1e-4:
                 print(f"Early stopping at epoch {epoch+1} with loss {epoch_loss/cpt:.4f}")
                 break
