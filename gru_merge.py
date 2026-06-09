@@ -150,7 +150,11 @@ class TOY_GRU(nn.Module):
                 print(f"Early stopping at epoch {epoch+1} with loss {epoch_loss/cpt:.4f}")
                 break
             if (epoch + 1) % 10 == 0:
-                print(f'Epoch [{epoch+1}/{TOY_GRU.epochs}], Loss: {epoch_loss/cpt:.4f}')
+                time_remaining = (TOY_GRU.epochs - epoch+1) * (time_end_epoch - time_begin_epoch)
+                hours = int(time_remaining / 3600)
+                mins = int((int(time_remaining) % 3600)/60)
+                secs = int(time_remaining) % 60
+                print(f'Epoch [{epoch+1}/{TOY_GRU.epochs}], Loss: {epoch_loss/cpt:.4f},Time remaining:{hours}h {mins}min {secs}s')
 
     ##### Evaluation #####
 
