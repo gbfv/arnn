@@ -4,14 +4,15 @@ log_active_flags = []
 all_flags = set()
 all_logs = True
 no_log = False
+main_dir = "default"
 def add_log(flag:str,filename:str,log:str):
-    global log_active_flags, all_logs,all_flags,no_log
+    global log_active_flags, all_logs,all_flags,no_log,main_dir
     all_flags = all_flags.union([flag])
     if no_log or (not all_logs and flag not in log_active_flags):
         return
-    os.makedirs("logs",exist_ok=True)
+    os.makedirs(f"logs/{main_dir}",exist_ok=True)
     
-    file = open(f"logs/{filename}","a")
+    file = open(f"logs/{main_dir}/{filename}","a")
     file.write(log + "\n")
     file.close()
 

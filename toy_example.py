@@ -423,8 +423,10 @@ if __name__ == "__main__":
     parser.add_argument("-dot", "--dot", help="Generate DOT file for the reduced automaton", action="store_true")
     parser.add_argument("-pm", "--path_model", help="Path to save/load the model", default="models")
     parser.add_argument("-dp", "--path_data", help="Path to save/load the dataset", default="test")
-    parser.add_argument("--ds-len-words",help="Longueur des motsdu dataset",type=int,default=400)
+    parser.add_argument("--ds-len-words-train",help="Longueur des motsdu dataset",type=int,default=400)
+    parser.add_argument("--ds-len-words-test",help="Longueur des motsdu dataset",type=int,default=400)
     parser.add_argument("--ds-nb-words",help="Longueur des motsdu dataset",type=int,default=1000)
+    
     args = parser.parse_args()
     print(args)
 
@@ -444,17 +446,18 @@ if __name__ == "__main__":
     if args.dataset:
         print("\n\n[*] Creating dataset...\n")
         dataset_name = f"{data_path}/{prefix}_{methode}"
-        len_words = args.ds_len_words
+        len_words_train = args.ds_len_words_train
+        len_words_test = args.ds_len_words_test
         nb_words = args.ds_nb_words
         # Entrainement
-        words = generate_words(params, length=len_words, nbr=nb_words)
+        words = generate_words(params, length=len_words_train, nbr=nb_words)
         if prefix in dict_automate:
             labels = get_label(automate, words, params["mots"], final_states, methode)
         else:
             labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
         create_log(words, labels, f"{dataset_name}_train.txt")
         # Test
-        words = generate_words(params, length=len_words, nbr=nb_words)
+        words = generate_words(params, length=len_words_test, nbr=nb_words)
         if prefix in dict_automate:
             labels = get_label(automate, words, params["mots"], final_states, methode)
         else:
