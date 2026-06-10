@@ -13,7 +13,7 @@ DEVICE = get_device()
 
 class TOY_GRU(nn.Module):
     #hyperparametres (les passer en argument de la classe ?)
-    embedding_dim = 2
+    embedding_dim:int = 2
     hidden_dim = 50
     epochs = 500
 
@@ -105,6 +105,7 @@ class TOY_GRU(nn.Module):
 
     def loss_multi_label(self, ops, y):
         loss = [self.criterion(ops[i].permute(0, 2, 1), y[:,:, i].long()) for i in range(len(ops))] # Calcul de la perte pour chaque tête de classification
+        add_log("loss","all_loss.log",f"{loss}")
         total_loss = sum(loss)
         return total_loss
 

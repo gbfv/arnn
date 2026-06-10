@@ -43,6 +43,7 @@ class TOY_Automaton:
             del centers[node_pred]
 
         Q = {q for q in centers.keys()} #Q = range(-1,state_number)
+        print(f"Q:{Q}")
         delta = {(q,j): dict() for q in Q for j in Sigma}
         sigma_tensor = torch.tensor(Sigma)
         cpt = 1

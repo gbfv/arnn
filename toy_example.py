@@ -199,7 +199,7 @@ def test_model(prefix, method, data_path="test/", model_path="models/"):
 def build_automate(model_name, states, prefix, method, sigma, init_build, path="test/", model_path="models/", final=set()):
     final = {int(f) for f in final} if final is not None else None
     model = load_model(model_name, model_path).to(DEVICE)
-    X, _ = parse_log_file(f"{path}/{prefix}_{method}_train.txt")
+    X, _ = parse_log_file(f"{path}/{prefix}_{method}_test.txt")
     
     print("Construction de l'automate...\n")
     A = TOY_Automaton(model, sigma, states, X, final=final, init_build=init_build)
@@ -501,7 +501,7 @@ if __name__ == "__main__":
 
 
     with open(f"{data_path}/{auto_name}", "rb") as f:
-        A = pickle.load(f)
+        A :TOY_Automaton= pickle.load(f)
 
 
     if methode != "binaire":
