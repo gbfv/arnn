@@ -37,9 +37,12 @@ def epoch_time_graph(filename):
     fifty_percent_epoch_index = get_index_closer(loss,fifty_percent)
 
     plt.plot(epochs,loss)
-    plt.axvline(one_percent_epoch_index,color="red")
-    plt.axvline(ten_percent_epoch_index,color="orange")
-    plt.axvline(fifty_percent_epoch_index,color="yellow")
+    plt.axvline(one_percent_epoch_index,color="red",label="99% value")
+    plt.axvline(ten_percent_epoch_index,color="orange",label="90% value")
+    plt.axvline(fifty_percent_epoch_index,color="yellow",label="50% value")
+    plt.xlabel("EPOCH")
+    plt.ylabel("Loss")
+    plt.legend()
     plt.show()
 
 
