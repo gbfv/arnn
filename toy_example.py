@@ -153,7 +153,12 @@ def train_model(prefix, method, num_classes=None, mots=None, data_path="test/", 
     print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
 
     label_method = "multi-classe" if method == "state" else method # state est une version de multi-classe
-    model = TOY_GRU(label_method, nbClasses=num_classes, mots=mots).to(DEVICE)
+    weights = None
+    if method == "multi-label":
+        weights = [ [1.0]+[16.0]*len(mot) for mot in mots ] # Poids pour chaque classe de chaque tête de classification
+        print(f"Poids utilisés pour le multi-label : {weights}")
+
+    model = TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(DEVICE)
 
     print(f"Hyperparamètres : {model.get_hyperparameters()}")
     model.train(dataloader)
