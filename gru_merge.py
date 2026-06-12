@@ -16,7 +16,7 @@ class TOY_GRU(nn.Module):
     hidden_dim = 50
     epochs = 500
 
-    def __init__(self, method, nbClasses=None, mots=None):
+    def __init__(self, method, nbClasses=None, mots=None,weights=None):
         super(TOY_GRU, self).__init__()
         self.embedding = nn.Embedding(LETTERS, TOY_GRU.embedding_dim)  # 256 pour le padding
         self.gru = nn.GRU(TOY_GRU.embedding_dim, TOY_GRU.hidden_dim, batch_first=True)  # batch_first=False par défaut
@@ -27,7 +27,7 @@ class TOY_GRU(nn.Module):
         elif method == "binaire":
             self.multi_classe(1)
         elif method == "multi-label":
-            self.multi_label(mots)
+            self.multi_label(mots, weights)
 
 
     def multi_classe(self, nbClasses): #nbClasses = 1 pour du binaire, >1 pour du multi-classe
@@ -38,10 +38,13 @@ class TOY_GRU(nn.Module):
         else:
             self.criterion = nn.CrossEntropyLoss()
 
-    def multi_label(self, mots):
+    def multi_label(self, mots, weights):
         length_mot = len(mots[0])+1 #position dans le mot + 0
         self.heads = nn.ModuleList([nn.Linear(TOY_GRU.hidden_dim, length_mot) for _ in range(len(mots))]) # une tête de classification par mot
-        self.criterion = nn.CrossEntropyLoss() #TODO: voir pour gerer les poids
+        if not weights:
+            self.criterion = nn.CrossEntropyLoss()
+        else: # Gère les poids
+            self.criterion = nn.ModuleList([nn.CrossEntropyLoss(weight=torch.tensor(weight)) for weight in weights])
 
 
     def get_hidden_size(self):
@@ -103,7 +106,10 @@ class TOY_GRU(nn.Module):
         return loss
 
     def loss_multi_label(self, ops, y):
-        loss = [self.criterion(ops[i].permute(0, 2, 1), y[:,:, i].long()) for i in range(len(ops))] # Calcul de la perte pour chaque tête de classification
+        if isinstance(self.criterion, nn.ModuleList):
+            loss = [self.criterion[i](ops[i].permute(0, 2, 1), y[:,:, i].long()) for i in range(len(ops))] # Calcul de la perte pour chaque tête de classification avec les poids
+        else:
+            loss = [self.criterion(ops[i].permute(0, 2, 1), y[:,:, i].long()) for i in range(len(ops))] # Calcul de la perte pour chaque tête de classification
         total_loss = sum(loss)
         return total_loss
 
