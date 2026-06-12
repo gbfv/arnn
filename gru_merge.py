@@ -254,5 +254,7 @@ class TOY_GRU(nn.Module):
                 outputs = torch.cat((outputs, proba), dim=0) if outputs is not None else proba
         return outputs #raw output
 
+    def give_f1_scores_ml(self, y_true, y_pred):
+        return  [f1_score([row[i] for row in y_true], [row[i] for row in y_pred], average=None) for i in range(len(y_true[0]))]
 
 

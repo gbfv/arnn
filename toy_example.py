@@ -242,7 +242,7 @@ def test_automaton(automaton_name, model, prefix, method, path="test/"):
     return res
 
 
-def find_motifs(A, params, motif_length, method, init_state=-1):
+def find_motifs(A:TOY_Automaton, params, motif_length, method, init_state=-1):
     target = {motif_length} if method != "state" else {A.rank[q] for q in A.F}
     motifs = {}
     words = generate_words(params, length=4000, nbr=1000)
