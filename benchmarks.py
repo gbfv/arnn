@@ -86,15 +86,15 @@ def simple_graph(data,Field1:str,Field2:str,LabelX:str,LabelY:str):
 #On sort une note sur 5, 0 grosse différence 5 pareil
 def compare_twof1score(f1:float,f2:float):
     diff = abs(f1 - f2)
-    if diff < 1e-5:
-        return 5
     if diff < 1e-4:
-        return 4
+        return 5
     if diff < 1e-3:
-        return 3
+        return 4
     if diff < 1e-2:
-        return 2
+        return 3
     if diff < 1e-1:
+        return 2
+    if diff < 1:
         return 1
     else:
         return 0
@@ -119,9 +119,10 @@ def model_test(N:int):
     model_path = "models"
     data_path = "test"
     dataset_name = f"{data_path}/{prefix}_{methode}"
-    len_words_train = 10
+    len_words_train = 40
     len_words_test = 400
-    nb_words = 1
+    nb_words = 1000
+    states = 100
 
     # Entrainement
     words = toy_example.generate_words(params, length=len_words_train, nbr=nb_words)
@@ -134,6 +135,7 @@ def model_test(N:int):
     num_classes = max([len(word) for word in params["mots"]]) + 1 
     
     f1_scores = []
+    automates = []
     for n in range(N):
         toy_example.train_model(prefix, methode, model_path=model_path, data_path=data_path, mots=params["mots"])
         model_name = toy_example.get_model_name(prefix, methode).split(".")[0] # On enlève l'extension .pth car elle est ajoutée dans load_model (TODO:Fix ça)
@@ -152,16 +154,94 @@ def model_test(N:int):
                     pred = [torch.argmax(op, dim=1).int().detach().cpu().numpy() for op in outputs]
                     pred = [list(item) for item in zip(*pred)] # On regroupe les prédictions de chaque tête pour chaque lettre
                     predicted.extend(pred)
+                    
         f1_scores.append(model.give_f1_scores_ml(y_true, predicted))
-    comapre_tab_f1(f1_scores)
-    pass
+        model_name = toy_example.get_model_name(prefix, methode).split(".")[0] # On enlève l'extension .pth car elle est ajoutée dans load_model (TODO:Fix ça)
+        model = toy_example.load_model(model_name, model_path).to(toy_example.DEVICE)
+        alphabet = list(range(len(params["alphabet"])))
+        toy_example.build_automate(model_name, states, prefix, methode, alphabet, init_build="pred", path=data_path, model_path=model_path)
+        auto_name = toy_example.get_automaton_name(prefix, methode, states)
+        with open(f"{data_path}/{auto_name}", "rb") as f:
+            automates.append(pickle.load(f))
 
-def dataset_test():
+    for i in f1_scores:
+        print(i)
+    isos = []
+    for i in range(len(automates)):
+        automates[i].minimize()
+    for i in range(len(automates)):
+        for j in range(i+1,len(automates)):
+            isos.append(toy_example.is_isomorphic(automates[i],automates[j])[0])
+    k = 0
+    for i in range(len(automates)):
+        for j in range(i+1,len(automates)):
+            print(f"{i} et {j} -> {isos[k]}")
+            k += 1
+    comapre_tab_f1(f1_scores)
+    
+
+def dataset_test(N):
     #This test is the dataset one
     #We create One automata then we create N datasets
     #For each of those datasets we create M models
     #The goal is to check if the models between datasets have an influance on the model
-    pass
+    #create a automate and a dataset then we create N mdels and compare them
+    automate, final_states, params = get_automate("ml") #el_automate
+    print("\n\n[*] Creating dataset...\n")
+    methode = "multi-label"
+    prefix = "ml"
+    model_path = "models"
+    data_path = "test"
+    dataset_name = f"{data_path}/{prefix}_{methode}"
+    len_words_train = 40
+    len_words_test = 400
+    nb_words = 1000
+    states = 100
+    f1_scores = []
+    automates = []
+    # Entrainement
+    for n in range(N):
+        words = toy_example.generate_words(params, length=len_words_train, nbr=nb_words)
+        labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
+        toy_example.create_log(words, labels, f"{dataset_name}_train.txt")
+
+        words = toy_example.generate_words(params, length=len_words_test, nbr=nb_words)
+        labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
+        toy_example.create_log(words, labels, f"{dataset_name}_test.txt")
+        num_classes = max([len(word) for word in params["mots"]]) + 1 
+
+        toy_example.train_model(prefix, methode, model_path=model_path, data_path=data_path, mots=params["mots"])
+        model_name = toy_example.get_model_name(prefix, methode).split(".")[0] # On enlève l'extension .pth car elle est ajoutée dans load_model (TODO:Fix ça)
+        model = load_model(model_name, model_path).to(toy_example.DEVICE)
+        X, Y = toy_example.parse_log_file(f"{data_path}/{prefix}_{methode}_test.txt")
+        predicted = []
+        y_true = []
+        for i in range(len(Y)):
+            y_test = Y[i]
+            y_true.extend(y_test)
+            X_t = torch.tensor(X[i]).to(toy_example.DEVICE)
+            with torch.no_grad():
+                    outputs = model.predict(X_t)  # pred_shape : [(lettres, classes)*nbr_tete]
+                    pred = [torch.argmax(op, dim=1).int().detach().cpu().numpy() for op in outputs]
+                    pred = [list(item) for item in zip(*pred)] # On regroupe les prédictions de chaque tête pour chaque lettre
+                    predicted.extend(pred)
+
+        f1_scores.append(model.give_f1_scores_ml(y_true, predicted))
+        model_name = toy_example.get_model_name(prefix, methode).split(".")[0] # On enlève l'extension .pth car elle est ajoutée dans load_model (TODO:Fix ça)
+        model = toy_example.load_model(model_name, model_path).to(toy_example.DEVICE)
+        alphabet = list(range(len(params["alphabet"])))
+        toy_example.build_automate(model_name, states, prefix, methode, alphabet, init_build="pred", path=data_path, model_path=model_path)
+        auto_name = toy_example.get_automaton_name(prefix, methode, states)
+        with open(f"{data_path}/{auto_name}", "rb") as f:
+            automates.append(pickle.load(f))
+    for i in f1_scores:
+        print(i)
+    comapre_tab_f1(f1_scores)
+    for i in range(len(automates)):
+        automates[i].minimize()
+    for i in range(len(automates)):
+        for j in range(i+1,len(automates)):
+            print(f"model_{i},model_{j} isomorphe:{toy_example.is_isomorphic(automates[i],automates[j])[0]}")
     pass
 if __name__ == "__main__":
-    model_test(3)
+    model_test(5)
