@@ -55,9 +55,11 @@ def epoch_time_graph(filename):
     epochs = [int(getattr(x,"EPOCH")) for x in r]
     loss = [float(getattr(x,"LOSS"))for x in r]
     one_percent = loss[-1] * 1.01
+    five_percent = loss[-1] * 1.05
     ten_percent = loss[-1] * 1.1
     fifty_percent = loss[-1] * 1.5
     one_percent_epoch_index = get_index_closer(loss,one_percent)
+    five_percent_epoch_index = get_index_closer(loss,five_percent)
     ten_percent_epoch_index = get_index_closer(loss,ten_percent)
     fifty_percent_epoch_index = get_index_closer(loss,fifty_percent)
 
@@ -67,6 +69,7 @@ def epoch_time_graph(filename):
     plt.axvline(one_percent_epoch_index,color="red",label=f"99% value (EPOCH:{one_percent_epoch_index},LOSS:{loss[one_percent_epoch_index]})")
     plt.axvline(ten_percent_epoch_index,color="orange",label=f"90% value (EPOCH:{ten_percent_epoch_index},LOSS:{loss[ten_percent_epoch_index]}))")
     plt.axvline(fifty_percent_epoch_index,color="yellow",label=f"50% value (EPOCH:{fifty_percent_epoch_index},,LOSS:{loss[fifty_percent_epoch_index]}))")
+    plt.axvline(five_percent_epoch_index,color="blue",label=f"95% value (EPOCH:{five_percent_epoch_index},,LOSS:{loss[five_percent_epoch_index]}))")
     plt.xlabel("EPOCH")
     plt.ylabel("Loss")
     plt.yscale("log")
@@ -243,5 +246,83 @@ def dataset_test(N):
         for j in range(i+1,len(automates)):
             print(f"model_{i},model_{j} isomorphe:{toy_example.is_isomorphic(automates[i],automates[j])[0]}")
     pass
+
+
+def train_model_incremantal(prefix, method,start,end,step, num_classes=None, mots=None, data_path="test/", model_path="models/"):
+    X,Y = toy_example.parse_log_file(f"{data_path}/{prefix}_{method}_train.txt")
+    dataset = LogDataset(files=[], whitelist=True, x32=False)
+    dataset.data = X
+    dataset.labels = Y
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=pad_batch)
+    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
+
+    label_method = "multi-classe" if method == "state" else method # state est une version de multi-classe
+    weights = None
+    if method == "multi-label":
+        weights = [ [1.0]+[16.0] * len(mot) for mot in mots ] # Poids pour chaque classe de chaque tête de classification
+        print(f"Poids utilisés pour le multi-label : {weights}")
+
+    model:TOY_GRU = TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(toy_example.DEVICE)
+
+    print(f"Hyperparamètres : {model.get_hyperparameters()}")
+    res = []
+    nb_done = 0
+    while nb_done < end:
+        if nb_done == 0:
+            TOY_GRU.epochs = start
+            nb_done += start
+        else:
+            TOY_GRU.epochs = step
+            nb_done += step
+        model.train(dataloader)
+        X, Y = toy_example.parse_log_file(f"{data_path}/{prefix}_{method}_test.txt")
+        predicted = []
+        y_true = []
+        for i in range(len(Y)):
+            y_test = Y[i]
+            y_true.extend(y_test)
+            X_t = torch.tensor(X[i]).to(toy_example.DEVICE)
+            with torch.no_grad():
+                    outputs = model.predict(X_t)  # pred_shape : [(lettres, classes)*nbr_tete]
+                    pred = [torch.argmax(op, dim=1).int().detach().cpu().numpy() for op in outputs]
+                    pred = [list(item) for item in zip(*pred)] # On regroupe les prédictions de chaque tête pour chaque lettre
+                    predicted.extend(pred)
+        res.append(model.give_f1_scores_ml(y_true, predicted))
+        print(f"epoch {nb_done} done")
+            
+
+    model_name = toy_example.get_model_name(prefix, method)
+    torch.save(model, f"{model_path}/{model_name}")
+    return res
+
+def test_encr_epoch(start,end,step):
+        #create a automate and a dataset then we create N mdels and compare them
+    automate, final_states, params = get_automate("ml") #el_automate
+    print("\n\n[*] Creating dataset...\n")
+    methode = "multi-label"
+    prefix = "ml"
+    model_path = "models"
+    data_path = "test"
+    dataset_name = f"{data_path}/{prefix}_{methode}"
+    len_words_train = 40
+    len_words_test = 400
+    nb_words = 1000
+    states = 100
+
+    # Entrainement
+    words = toy_example.generate_words(params, length=len_words_train, nbr=nb_words)
+    labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
+    toy_example.create_log(words, labels, f"{dataset_name}_train.txt")
+
+    words = toy_example.generate_words(params, length=len_words_test, nbr=nb_words)
+    labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
+    toy_example.create_log(words, labels, f"{dataset_name}_test.txt")
+    num_classes = max([len(word) for word in params["mots"]]) + 1 
+    
+    f1_scores = []
+    automates = []
+    return train_model_incremantal(prefix, methode,start,end,step, model_path=model_path, data_path=data_path, mots=params["mots"])
+
+
 if __name__ == "__main__":
-    model_test(5)
+    print(test_encr_epoch(1,100,10))
