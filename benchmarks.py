@@ -248,7 +248,8 @@ def dataset_test(N):
     pass
 
 
-def train_model_incremantal(prefix, method,start,end,step, num_classes=None, mots=None, data_path="test/", model_path="models/"):
+
+def train_model_incremantal(prefix, method,start,end,step, num_classes=None, mots=None, data_path="test/", model_path="models/",weights=None):
     X,Y = toy_example.parse_log_file(f"{data_path}/{prefix}_{method}_train.txt")
     dataset = LogDataset(files=[], whitelist=True, x32=False)
     dataset.data = X
@@ -257,10 +258,10 @@ def train_model_incremantal(prefix, method,start,end,step, num_classes=None, mot
     print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
 
     label_method = "multi-classe" if method == "state" else method # state est une version de multi-classe
-    weights = None
-    if method == "multi-label":
-        weights = [ [1.0]+[16.0] * len(mot) for mot in mots ] # Poids pour chaque classe de chaque tête de classification
-        print(f"Poids utilisés pour le multi-label : {weights}")
+    if weights is not None:
+        if method == "multi-label":
+            weights = [ [1.0]+[16.0] * len(mot) for mot in mots ] # Poids pour chaque classe de chaque tête de classification
+            print(f"Poids utilisés pour le multi-label : {weights}")
 
     model:TOY_GRU = TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(toy_example.DEVICE)
 
@@ -332,5 +333,25 @@ def test_encr_epoch(start,end,step):
         add_log("incr_epoch","incr_epoch.log",f"EPOCH:{start+(step_progress*step)},{str_res}")
 
 
+def make_graph_incr_epoch(filename):
+    data = load_log_file_for_benchmark(filename)
+    epochs = [int(getattr(x,"EPOCH")) for x in data]
+    f1s = []
+    for i in range(0,len(data[0])-1):
+        f_one = [float(getattr(x,f"HEAD{i}")) for x in data]
+        f1s.append(f_one)
+    plt.cla()
+    for i in range(len(f1s)):
+        plt.plot(epochs,f1s[i],label=f"TETE {i}")
+    plt.axis((0,5000,0,1.5))
+    plt.fill_between(epochs,f1s[-1],0,where=(f1s[-1] == np.ones(len(f1s[-1]))),color="r",label="Dernière tête == 1",alpha=0.4)
+    plt.title("Moyennes des valeurs F1 selon la tête en fonction de l'epoch")
+    plt.xlabel("Epoch")
+    plt.ylabel("F1 scores (moyenne par têtes)")
+    plt.legend()
+    plt.show()
+
+
+
 if __name__ == "__main__":
-    test_encr_epoch(1,100,25)
+    make_graph_incr_epoch("logs/aaa.log")
