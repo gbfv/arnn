@@ -295,6 +295,8 @@ def train_model_incremantal(prefix, method,start,end,step, num_classes=None, mot
     torch.save(model, f"{model_path}/{model_name}")
     return res
 
+
+from log_custom import add_log
 def test_encr_epoch(start,end,step):
         #create a automate and a dataset then we create N mdels and compare them
     automate, final_states, params = get_automate("ml") #el_automate
@@ -321,8 +323,14 @@ def test_encr_epoch(start,end,step):
     
     f1_scores = []
     automates = []
-    return train_model_incremantal(prefix, methode,start,end,step, model_path=model_path, data_path=data_path, mots=params["mots"])
+    res = train_model_incremantal(prefix, methode,start,end,step, model_path=model_path, data_path=data_path, mots=params["mots"])
+    for step_progress in range(len(res)):
+        res_pos = []
+        for pos in range(len(res[step_progress][0])):
+            res_pos.append(np.mean([x[pos] for x in res[step_progress]]))
+        str_res = ",".join([f"HEAD{x}:{res_pos[x]}" for x in range(len(res[step_progress][0]))])
+        add_log("incr_epoch","incr_epoch.log",f"EPOCH:{start+(step_progress*step)},{str_res}")
 
 
 if __name__ == "__main__":
-    print(test_encr_epoch(1,100,10))
+    test_encr_epoch(1,100,25)
