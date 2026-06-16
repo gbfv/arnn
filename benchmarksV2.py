@@ -162,8 +162,8 @@ def test_automate(A:TOY_Automaton,model:TOY_GRU,info_automate,mots,methode,init,
         pred, _ = A.predict(x) #Attention, ici on prédit depuis -1 (change assez peu)
         predicted.extend(pred.tolist())
     print(len(predicted), len(yt))
-    res = model.scores(yt, predicted)
-
+    model.scores(yt, predicted)
+    res = model.give_f1_scores_ml(yt,predicted)
     if methode == "multi-classe":
         f1_macro, _ = res
         print(f"F1-Score : {f1_macro}")
@@ -187,15 +187,64 @@ def test_of_tests():
     A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
     A.minimize()
     init_state = A.find_initial_state()
-    test_automate(A,M,info_automate,mots,"multi-label",init_state,dataset_name)
+    F2 = test_automate(A,M,info_automate,mots,"multi-label",init_state,dataset_name)
     B = light_automaton(automate)
-    print(is_isomorphic(A,B))
+    print(is_isomorphic(B,A)[0])
+    print(F2)
 
+def bug_hunt():
+    automate, final_states, info_automate = create_first_auto("ml",len_words=3,nb_words=10) #el_automate
+    dataset_name  = "test/el_grand_test"
+    create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,30,dataset_name)
+    mots = info_automate["mots"]
+    weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+    M = create_model(mots,"multi-label",weights)
+    B = light_automaton(automate)
+    F2 = test_automate(B,M,info_automate,mots,"multi-label",-1,dataset_name)
+
+
+def best_method_init():
+    automate, final_states, info_automate = create_first_auto("ml",len_words=5) #el_automate
+    dataset_name  = "test/el_grand_test"
+    create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,40,dataset_name)
+    mots = info_automate["mots"]
+    weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+    M = create_model(mots,"multi-label",weights)
+    train_model(M,500,dataset_name)
+    options = ["brute", "pred", "voteF", "voteQ", "find"]
+    for o in options:
+        A = get_automate_from_model(M,info_automate,100,dataset_name,o)
+        A.minimize()
+        init_st = A.find_initial_state()
+        F2 = test_automate(A,M,info_automate,mots,"multi-label",init_st,dataset_name)
+        B = light_automaton(automate)
+        print(np.mean([x[-1] for x in F2]))
+        print(is_isomorphic(B,A)[0])
+
+
+from log_custom import add_log
+def gradual_epoch_loss_test():
+    automate, final_states, info_automate = create_first_auto("ml",len_words=5) #el_automate
+    dataset_name  = "test/el_grand_test"
+    create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,40,dataset_name)
+    mots = info_automate["mots"]
+    weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+    B= light_automaton(automate)
+    M = create_model(mots,"multi-label",weights)
+    for i in range(50):
+        train_model(M,25,dataset_name)
+        F1s = test_model(M,dataset_name)
+        A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
+        A.minimize()
+        ini = A.find_initial_state()
+        F2s = test_automate(A,M,info_automate,mots,"multi-label",ini,dataset_name)
+        add_log("grad_ep","gradual_ep_model.log",f"EPOCH:{(i+1)*25}" + "MODEL:"+str(np.mean([x[-1] for x in F1s])))
+        add_log("grad_ep","gradual_ep_auto.log",f"EPOCH:{(i+1)*25}" + "MODEL:"+str(np.mean([x[-1] for x in F2s])),"ISO:"+str(is_isomorphic(B,A)[0]))
 
 
 
 if __name__ == "__main__":
-    test_of_tests()
+    gradual_epoch_loss_test()
 
 
 
