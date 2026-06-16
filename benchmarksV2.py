@@ -1,0 +1,201 @@
+import matplotlib
+import matplotlib.pyplot as plt
+from collections import namedtuple
+from typing import List
+import numpy as np
+
+import pickle
+import random
+import torch
+import pathlib
+import pickle
+import json
+import argparse
+from re import finditer
+
+from logDataset import LogDataset
+#from gru_multi_test import Test_TMGRU
+#from gru_test import Test_TGRU
+#from gru_labels_test import Test_LGRU
+from gru_merge import TOY_GRU
+#from automaton import Automaton
+#from automaton_multi import Automaton_multi
+#from automaton_multi_label import Automaton_multi_label
+from automaton_merge import TOY_Automaton
+from main import load_model, pad_batch
+from utils import get_device
+from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse
+from isomorphe import is_isomorphic, ged_nx
+
+import toy_example
+
+
+def dist(f1,f2):
+    return abs(f1 - f2)
+
+def get_index_closer(tab,v):
+    return np.argmin([dist(x,v) for x in tab])
+    
+
+#On sort une note sur 5, 0 grosse différence 5 pareil
+def compare_twof1score(f1:float,f2:float):
+    diff = abs(f1 - f2)
+    if diff < 1e-4:
+        return 5
+    if diff < 1e-3:
+        return 4
+    if diff < 1e-2:
+        return 3
+    if diff < 1e-1:
+        return 2
+    if diff < 1:
+        return 1
+    else:
+        return 0
+
+def comapre_tab_f1(tab:List[List[float]]):
+    for model_i in range(len(tab)):
+        for model_j in range(model_i+1,len(tab)):
+            scores = []
+            for mot_i in range(len(tab[model_i])):
+                for label_i in range(len(tab[model_i][mot_i])):
+                    scores.append(compare_twof1score(tab[model_i][mot_i][label_i],tab[model_j][mot_i][label_i]))
+            print(f"model {model_i} -> model{model_j} : {np.mean(scores)}/5")
+        pass
+
+
+def create_first_auto(prefix,len_words=None,nb_words=None,is_reset=True):
+    automate, final_states, params = None, None, None
+        
+    print(f"Creating first_auto, generating it...")
+    #configuration aléatoire de l'automate
+    alpha_end = random.randint(100, 103) #Entre [a-c] et [a-f]
+    alphabet = [chr(i) for i in range(97, alpha_end)]
+    if nb_words is None:
+        nbr_max = random.randint(3, 5)
+    else:
+        nbr_max = nb_words
+    if len_words is None:
+        taille = random.randint(3, 6)
+    else:
+        taille = len_words
+    if is_reset:
+        reset = random.choice(alphabet)
+    else:
+        reset = None
+    #genération du langage et de l'automate
+    L, reset = no_overlap(alphabet=alphabet, nbr=nbr_max, length=taille, reset=reset)
+    regex = f"([{"".join(alphabet)}]|.)*({'|'.join(L)})"
+    fsm = parse(regex).to_fsm()
+    
+    automate = fsm.reduce()
+    final_states = set(fsm.finals)
+    params = {
+        "alphabet" : alphabet,
+        "mots" : L,
+        "reset_char" : reset
+    }
+    print(f"Alphabet : {alphabet}\nRegex : {regex}\nReset : {reset}")
+    print(automate)
+
+    return automate, final_states, params
+
+def create_dataset_and_save_it(automate,info_automate,methode,nb_words_test:int,nb_words_train:int,len_test:int,len_train:int,dataset_name:str):
+    words = toy_example.generate_words(info_automate, length=len_train, nbr=nb_words_train)
+    labels = [accept_stream(word, automate, info_automate["mots"], methode) for word in words]
+    toy_example.create_log(words, labels, f"{dataset_name}_train.txt")
+
+    words = toy_example.generate_words(info_automate, length=len_test, nbr=nb_words_test)
+    labels = [accept_stream(word, automate, info_automate["mots"], methode) for word in words]
+    toy_example.create_log(words, labels, f"{dataset_name}_test.txt")
+
+def create_model(mots,method:str,weights)->TOY_GRU:
+    num_classes = max([len(word) for word in mots]) + 1
+    label_method = "multi-classe" if method == "state" else method # state est une version de multi-classe
+    return TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(toy_example.DEVICE)
+
+
+def train_model(model:TOY_GRU,epochs:int,dataset_name:str):
+    X,Y = toy_example.parse_log_file(f"{dataset_name}_train.txt")
+    dataset = LogDataset(files=[], whitelist=True, x32=False)
+    dataset.data = X
+    dataset.labels = Y
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=pad_batch)
+    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
+    TOY_GRU.epochs = epochs
+    print(f"Hyperparamètres : {model.get_hyperparameters()}")
+    model.train(dataloader)
+
+    return model
+
+
+#Return the F1 scores
+def test_model(model:TOY_GRU,dataset_name:str):
+    X, Y = toy_example.parse_log_file(f"{dataset_name}_test.txt")
+    predicted = []
+    y_true = []
+    for i in range(len(Y)):
+        y_test = Y[i]
+        y_true.extend(y_test)
+        X_t = torch.tensor(X[i]).to(toy_example.DEVICE)
+        with torch.no_grad():
+                outputs = model.predict(X_t)  # pred_shape : [(lettres, classes)*nbr_tete]
+                pred = [torch.argmax(op, dim=1).int().detach().cpu().numpy() for op in outputs]
+                pred = [list(item) for item in zip(*pred)] # On regroupe les prédictions de chaque tête pour chaque lettre
+                predicted.extend(pred)
+    model.scores(y_true, predicted)
+    return model.give_f1_scores_ml(y_true,predicted)
+
+def get_automate_from_model(model:TOY_GRU,info_automate,nb_states:int,dataset_name:str,init_method:str) -> TOY_Automaton:
+    print("Création automate (peut être long...)")
+    X,_ = toy_example.parse_log_file(f"{dataset_name}_test.txt")
+    alphabet = list(range(len(info_automate["alphabet"])))
+    return TOY_Automaton(model,alphabet,nb_states,X,final=None,init_build=init_method)
+
+
+def test_automate(A:TOY_Automaton,model:TOY_GRU,info_automate,mots,methode,init,dataset_name):
+    X, Y = toy_example.parse_log_file(f"{dataset_name}_test.txt")
+    X = torch.tensor(X).to(toy_example.DEVICE)
+    yt = [y for sublist in Y for y in sublist]
+    predicted = []
+    for x in X:
+        pred, _ = A.predict(x) #Attention, ici on prédit depuis -1 (change assez peu)
+        predicted.extend(pred.tolist())
+    print(len(predicted), len(yt))
+    res = model.scores(yt, predicted)
+
+    if methode == "multi-classe":
+        f1_macro, _ = res
+        print(f"F1-Score : {f1_macro}")
+    elif methode == "binaire":
+        prec, recall, f1 = res
+        print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
+    motifs_length = max(len(motif) for motif in info_automate["mots"])
+    toy_example.find_motifs(A, info_automate, motifs_length, methode, init_state=init)
+    return res
+
+def test_of_tests():
+    automate, final_states, info_automate = create_first_auto("ml",len_words=3,nb_words=10) #el_automate
+    dataset_name  = "test/el_grand_test"
+    create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,30,dataset_name)
+    mots = info_automate["mots"]
+    weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+    M = create_model(mots,"multi-label",weights)
+    train_model(M,500,dataset_name)
+    F1 = test_model(M,dataset_name)
+    print(F1)
+    A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
+    A.minimize()
+    init_state = A.find_initial_state()
+    test_automate(A,M,info_automate,mots,"multi-label",init_state,dataset_name)
+    B = light_automaton(automate)
+    print(is_isomorphic(A,B))
+
+
+
+
+if __name__ == "__main__":
+    test_of_tests()
+
+
+
