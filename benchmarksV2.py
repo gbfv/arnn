@@ -1,5 +1,3 @@
-import matplotlib
-import matplotlib.pyplot as plt
 from collections import namedtuple
 from typing import List
 import numpy as np
@@ -238,8 +236,8 @@ def gradual_epoch_loss_test():
         A.minimize()
         ini = A.find_initial_state()
         F2s = test_automate(A,M,info_automate,mots,"multi-label",ini,dataset_name)
-        add_log("grad_ep","gradual_ep_model.log",f"EPOCH:{(i+1)*25}" + "MODEL:"+str(np.mean([x[-1] for x in F1s])))
-        add_log("grad_ep","gradual_ep_auto.log",f"EPOCH:{(i+1)*25}" + "MODEL:"+str(np.mean([x[-1] for x in F2s])),"ISO:"+str(is_isomorphic(B,A)[0]))
+        add_log("grad_ep","gradual_ep_model.log",f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F1s])))
+        add_log("grad_ep","gradual_ep_auto.log",f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F2s]))+",ISO:"+str(is_isomorphic(B,A)[0]))
 
 
 
