@@ -22,7 +22,7 @@ from gru_merge import TOY_GRU
 from automaton_merge import TOY_Automaton
 from main import load_model, pad_batch
 from utils import get_device
-from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse,save_fsm
+from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse,save_fsm,load_fsm
 from isomorphe import is_isomorphic, ged_nx
 
 import toy_example
@@ -258,8 +258,46 @@ def create_automatas():
 
     pass
 
+
+NB_IN_TEST = 500
+def get_fsm_by_id(id:int):
+    all_f = os.listdir("fsms")
+    for f in all_f:
+        if int(f.split("_")[1]) == id:
+            data = load_fsm(f.split(".")[0], path="fsms/")
+            automate = data["automate"]
+            final_states = data["final_states"]
+            params = data["params"]
+            print("ID AUTO UTILISE:",id)
+            return automate,final_states,params
+    print(f"ERROR NO FSMS WITH ID {id} FOUND")
+
+
+import log_custom
+def gradual_epoch_loss_testV2():
+    for N in range(25):
+        automate, final_states, info_automate = get_fsm_by_id(N) #el_automate
+        log_custom.main_dir = f"auto{N}"
+        dataset_name  = "test/el_grand_test"
+        create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,400,dataset_name)
+        mots = info_automate["mots"]
+        weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+        B= light_automaton(automate)
+        M = create_model(mots,"multi-label",weights)
+        for i in range(50):
+            train_model(M,25,dataset_name)
+            F1s = test_model(M,dataset_name)
+            A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
+            A.minimize()
+            ini = A.find_initial_state()
+            F2s = test_automate(A,M,info_automate,mots,"multi-label",ini,dataset_name)
+            add_log("grad_ep","gradual_ep_model.log",f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F1s])))
+            add_log("grad_ep","gradual_ep_auto.log",f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F2s]))+",ISO:"+str(is_isomorphic(B,A)[0]))
+
+
+
 if __name__ == "__main__":
-    create_automatas()
+    gradual_epoch_loss_testV2()
 
 
 
