@@ -22,10 +22,13 @@ from gru_merge import TOY_GRU
 from automaton_merge import TOY_Automaton
 from main import load_model, pad_batch
 from utils import get_device
-from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse
+from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse,save_fsm
 from isomorphe import is_isomorphic, ged_nx
 
 import toy_example
+
+import random
+import os
 
 
 def dist(f1,f2):
@@ -70,11 +73,11 @@ def create_first_auto(prefix,len_words=None,nb_words=None,is_reset=True):
     alpha_end = random.randint(100, 103) #Entre [a-c] et [a-f]
     alphabet = [chr(i) for i in range(97, alpha_end)]
     if nb_words is None:
-        nbr_max = random.randint(3, 5)
+        nbr_max = random.randint(3, 20)
     else:
         nbr_max = nb_words
     if len_words is None:
-        taille = random.randint(3, 6)
+        taille = random.randint(3, 10)
     else:
         taille = len_words
     if is_reset:
@@ -240,9 +243,23 @@ def gradual_epoch_loss_test():
         add_log("grad_ep","gradual_ep_auto.log",f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F2s]))+",ISO:"+str(is_isomorphic(B,A)[0]))
 
 
+import random
+def create_automatas():
+    os.makedirs(f"fsms/",exist_ok=True)
+    i = 0
+    while range(500):
+        automate, final_states, info_automate = create_first_auto("ml",len_words=5) #el_automate
+        N = len(automate.states)
+        Z = len(info_automate["mots"]) * len(info_automate["mots"][0])
+        pak = {"automate": automate, "final_states": final_states, "params": info_automate}
+        save_fsm(pak,f"I_{i}_N_{N}_Z_{Z}",path="fsms/")
+        i += 1
+        
+
+    pass
 
 if __name__ == "__main__":
-    gradual_epoch_loss_test()
+    create_automatas()
 
 
 
