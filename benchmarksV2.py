@@ -23,7 +23,7 @@ from automaton_merge import TOY_Automaton
 from main import load_model, pad_batch
 from utils import get_device
 from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse,save_fsm,load_fsm
-from isomorphe import is_isomorphic, ged_nx
+from isomorphe import is_isomorphic, ged_nx,Weisfeiler_Leman
 
 import toy_example
 
@@ -131,7 +131,7 @@ def train_model(model:TOY_GRU,epochs:int,dataset_name:str):
 
 
 #Return the F1 scores
-def test_model(model:TOY_GRU,dataset_name:str):
+def test_model(model:TOY_GRU,method:str,dataset_name:str):
     X, Y = toy_example.parse_log_file(f"{dataset_name}_test.txt")
     predicted = []
     y_true = []
@@ -140,18 +140,21 @@ def test_model(model:TOY_GRU,dataset_name:str):
         y_true.extend(y_test)
         X_t = torch.tensor(X[i]).to(toy_example.DEVICE)
         with torch.no_grad():
+            if method == "multi-label":
                 outputs = model.predict(X_t)  # pred_shape : [(lettres, classes)*nbr_tete]
                 pred = [torch.argmax(op, dim=1).int().detach().cpu().numpy() for op in outputs]
                 pred = [list(item) for item in zip(*pred)] # On regroupe les prédictions de chaque tête pour chaque lettre
-                predicted.extend(pred)
+            elif method in ["multi-classe", "state"]:
+                pred = torch.argmax(model.predict(X_t), dim=1).int().detach().cpu().numpy()
+            predicted.extend(pred)
     model.scores(y_true, predicted)
-    return model.give_f1_scores_ml(y_true,predicted)
+    return model.give_f1_scores(y_true,predicted)
 
 def get_automate_from_model(model:TOY_GRU,info_automate,nb_states:int,dataset_name:str,init_method:str) -> TOY_Automaton:
     print("Création automate (peut être long...)")
     X,_ = toy_example.parse_log_file(f"{dataset_name}_test.txt")
     alphabet = list(range(len(info_automate["alphabet"])))
-    return TOY_Automaton(model,alphabet,nb_states,X,final=None,init_build=init_method)
+    return TOY_Automaton(model,alphabet,nb_states,X,init_build=init_method)
 
 
 def test_automate(A:TOY_Automaton,model:TOY_GRU,info_automate,mots,methode,init,dataset_name):
@@ -164,7 +167,7 @@ def test_automate(A:TOY_Automaton,model:TOY_GRU,info_automate,mots,methode,init,
         predicted.extend(pred.tolist())
     print(len(predicted), len(yt))
     model.scores(yt, predicted)
-    res = model.give_f1_scores_ml(yt,predicted)
+    res = model.give_f1_scores(yt,predicted)
     if methode == "multi-classe":
         f1_macro, _ = res
         print(f"F1-Score : {f1_macro}")
@@ -279,14 +282,14 @@ def gradual_epoch_loss_testV2():
         automate, final_states, info_automate = get_fsm_by_id(N) #el_automate
         log_custom.main_dir = f"auto{N}"
         dataset_name  = "test/el_grand_test"
-        create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,400,dataset_name)
+        create_dataset_and_save_it(automate,info_automate,"multi-label",100,100,400,400,dataset_name)
         mots = info_automate["mots"]
         weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
         B= light_automaton(automate)
         M = create_model(mots,"multi-label",weights)
-        for i in range(50):
+        for i in range(1):
             train_model(M,25,dataset_name)
-            F1s = test_model(M,dataset_name)
+            F1s = test_model(M,"multi-label",dataset_name)
             A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
             A.minimize()
             ini = A.find_initial_state()
@@ -296,8 +299,39 @@ def gradual_epoch_loss_testV2():
 
 
 
+
+def ressemblance_score(A, B):
+    #on applique WL et on compare les couleurs
+    color_A = Weisfeiler_Leman(A)
+    color_B = Weisfeiler_Leman(B)
+
+    sorted_colors_A = sorted(color_A.values())
+    sorted_colors_B = sorted(color_B.values())
+    print(sorted_colors_A)
+    print(sorted_colors_B)
+    isomorphic = sorted_colors_A == sorted_colors_B
+
+    if isomorphic:
+        return 1
+    return float(len([x for x in sorted_colors_A if x in sorted_colors_B])) / float(len(sorted_colors_A))
+
+def trash_func():
+    automate, final_states, info_automate = get_fsm_by_id(random.randint(0,NB_IN_TEST)) #el_automate
+    dataset_name  = "test/el_grand_test"
+    create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,40,dataset_name)
+    mots = info_automate["mots"]
+    weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+    M = create_model(mots,"multi-label",weights)
+    train_model(M,500,dataset_name)
+    F1s = test_model(M,"multi-label",dataset_name)
+    A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
+    A.minimize()
+    B = light_automaton(automate)
+    print(ressemblance_score(B,A))
+
 if __name__ == "__main__":
     gradual_epoch_loss_testV2()
+    
 
 
 

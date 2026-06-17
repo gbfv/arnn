@@ -260,7 +260,12 @@ class TOY_GRU(nn.Module):
                 outputs = torch.cat((outputs, proba), dim=0) if outputs is not None else proba
         return outputs #raw output
 
-    def give_f1_scores_ml(self, y_true, y_pred):
-        return  [f1_score([row[i] for row in y_true], [row[i] for row in y_pred], average=None) for i in range(len(y_true[0]))]
+    def give_f1_scores(self, y_true, y_pred):
+        if self.method == "binaire":
+            return self.scores_binaire(y_true, y_pred)
+        elif self.method == "multi-classe":
+            return self.scores_multi_classe(y_true, y_pred)[1]
+        elif self.method == "multi-label":
+            return [f1_score([row[i] for row in y_true], [row[i] for row in y_pred], average=None) for i in range(len(y_true[0]))]
 
 
