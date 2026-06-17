@@ -329,8 +329,31 @@ def trash_func():
     B = light_automaton(automate)
     print(ressemblance_score(B,A))
 
+
+def the_number_of_states_needed():
+    for N in range(5):
+        id_auto = random.randint(0,NB_IN_TEST)
+        automate, final_states, info_automate = get_fsm_by_id(id_auto) #el_automate
+        dataset_name  = "test/el_grand_test"
+        create_dataset_and_save_it(automate,info_automate,"multi-label",1000,1000,400,400,dataset_name)
+        mots = info_automate["mots"]
+        weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+        M = create_model(mots,"multi-label",weights)
+        train_model(M,500,dataset_name)
+        nb_states = len(automate.states) /2
+        step = nb_states
+        B = light_automaton(automate)
+        for i in range(20):
+            A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
+            A.minimize()
+            ini = A.find_initial_state()
+            F1s = F2s = test_automate(A,M,info_automate,mots,"multi-label",ini,dataset_name)
+            mean_f1 = np.mean([x[-1] for x in F1s])
+            add_log("nb_st_test",f"nb_state_id{id_auto}",f"STATES:{nb_states},F1:{mean_f1},SAME:{ressemblance_score(A,B)}")
+
+
 if __name__ == "__main__":
-    gradual_epoch_loss_testV2()
+    the_number_of_states_needed()
     
 
 
