@@ -82,10 +82,9 @@ def no_overlap(alphabet, nbr, length, reset=None):
     while len(words) < nbr and attempts < nbr*10:
         word = ''.join(random.choices(cpy_alphabet, k=length))
         attempts += 1
-        if not is_overlapping(word, words):
-            words.add(word)
+        words.add(word)
 
-    return list(words), reset
+    return list(set(words)), reset
 
 
 
