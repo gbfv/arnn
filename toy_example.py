@@ -469,7 +469,6 @@ if __name__ == "__main__":
             labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
         create_log(words, labels, f"{dataset_name}_test.txt")
 
-
     #entrainement du modèle
     if args.model:
         print("\n\n[*] Training model...\n")

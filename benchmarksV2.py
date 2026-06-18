@@ -351,9 +351,24 @@ def the_number_of_states_needed():
             mean_f1 = np.mean([x[-1] for x in F1s])
             add_log("nb_st_test",f"nb_state_id{id_auto}",f"STATES:{nb_states},F1:{mean_f1},SAME:{ressemblance_score(A,B)}")
 
+def nuage_de_points():
+    while True:
+        id_auto = random.randint(0,NB_IN_TEST)
+        automate, final_states, info_automate = get_fsm_by_id(id_auto) #el_automate
+        dataset_name  = "test/el_grand_test"
+        for k in range(100,2000,100):
+            create_dataset_and_save_it(automate,info_automate,"multi-label",k,k,400,40,dataset_name)
+            mots = info_automate["mots"]
+            weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+            M = create_model(mots,"multi-label",weights)
+            train_model(M,500,dataset_name)
+            F1 = test_model(M,"multi-label",dataset_name)
+            mean_f1 = np.mean([x[-1] for x in F1])
+            add_log("nuage","nuage_log.log",f"ID:{id_auto},NB_WORDS:{k},F1:{mean_f1}")
+
 
 if __name__ == "__main__":
-    the_number_of_states_needed()
+    nuage_de_points()
     
 
 
