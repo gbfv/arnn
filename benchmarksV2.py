@@ -25,6 +25,9 @@ from utils import get_device
 from build_auto import accept_stream, get_automate, light_automaton,no_overlap,parse,save_fsm,load_fsm
 from isomorphe import is_isomorphic, ged_nx,Weisfeiler_Leman
 
+from logDataset import LogDataset
+from torch.utils.data import DataLoader, TensorDataset
+
 import toy_example
 
 import random
@@ -110,6 +113,10 @@ def create_dataset_and_save_it(automate,info_automate,methode,nb_words_test:int,
     labels = [accept_stream(word, automate, info_automate["mots"], methode) for word in words]
     toy_example.create_log(words, labels, f"{dataset_name}_test.txt")
 
+    words = toy_example.generate_words(info_automate, length=len_test, nbr=nb_words_test)
+    labels = [accept_stream(word, automate, info_automate["mots"], methode) for word in words]
+    toy_example.create_log(words, labels, f"{dataset_name}_val.txt")
+
 def create_model(mots,method:str,weights)->TOY_GRU:
     num_classes = max([len(word) for word in mots]) + 1
     label_method = "multi-classe" if method == "state" else method # state est une version de multi-classe
@@ -118,14 +125,16 @@ def create_model(mots,method:str,weights)->TOY_GRU:
 
 def train_model(model:TOY_GRU,epochs:int,dataset_name:str):
     X,Y = toy_example.parse_log_file(f"{dataset_name}_train.txt")
-    dataset = LogDataset(files=[], whitelist=True, x32=False)
-    dataset.data = X
-    dataset.labels = Y
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=pad_batch)
-    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
+    dataset_tr = TensorDataset(torch.tensor(X),torch.tensor(Y))
+    dataloader_tr = DataLoader(dataset_tr,batch_size=32,shuffle=True)
+
+    X_val, Y_val = toy_example.parse_log_file(f"{dataset_name}_val.txt")
+    dataset_val = TensorDataset(torch.tensor(X_val), torch.tensor(Y_val))
+    dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=False)
+
     TOY_GRU.epochs = epochs
     print(f"Hyperparamètres : {model.get_hyperparameters()}")
-    model.train(dataloader)
+    model.train_model(dataloader_tr,dataloader_val)
 
     return model
 
@@ -186,7 +195,7 @@ def test_of_tests():
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
     M = create_model(mots,"multi-label",weights)
     train_model(M,500,dataset_name)
-    F1 = test_model(M,dataset_name)
+    F1 = test_model(M,"multi-label",dataset_name)
     print(F1)
     A = get_automate_from_model(M,info_automate,100,dataset_name,"pred")
     A.minimize()
