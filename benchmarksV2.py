@@ -331,7 +331,7 @@ def trash_func():
 
 
 def the_number_of_states_needed():
-    for N in range(5):
+    for N in range(10):
         id_auto = random.randint(0,NB_IN_TEST)
         automate, final_states, info_automate = get_fsm_by_id(id_auto) #el_automate
         dataset_name  = "test/el_grand_test"
