@@ -66,7 +66,7 @@ def states_graph(filename):
             plt.plot(Sts,F1s)
     plt.xlabel("Nombre de k clusters (en pourcentage du nombre d'état de l'automate originel)")
     plt.ylabel("F1 score")
-    plt.title("F1 scores des automates en fonction du nomre de clusters crées")
+    plt.title("F1 scores des automates en fonction du nombre de clusters crées")
     plt.yscale("log")
     plt.axis((-1,20,-1,1.5))
     plt.show()
