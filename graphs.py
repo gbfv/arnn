@@ -29,6 +29,7 @@ from isomorphe import is_isomorphic, ged_nx
 
 import toy_example
 
+import os
 #Tout les fichiers logs vont être de type VAR1:VAL1, VAR2:VAL2
 def load_log_file_for_benchmark(filename):
     data = [x.removesuffix("\n") for x in  open(filename,"r").readlines()]
@@ -50,3 +51,20 @@ def simple_graph(data,Field1:str,Field2:str,LabelX:str,LabelY:str):
     plt.plot(Y,X)
     plt.axis((min(Y),max(Y),0,max(max(X),5)))
     plt.show()
+
+
+def states_graph(filename):
+    all_f:List[str] = os.listdir(filename)
+    plt.cla()
+    for f in all_f:
+        if f.startswith("nb_state_id"):
+            data = load_log_file_for_benchmark(filename + f)
+            STs = [int(getattr(x,"STATES")) for x in data]
+            org = float(STs[1])
+            Sts = [float(x) / org for x in STs]
+            F1s = [float(getattr(x,"F1")) for x in data]
+            plt.plot(Sts,F1s)
+    plt.show()
+
+if __name__ == "__main__":
+    states_graph("logs/default/")
