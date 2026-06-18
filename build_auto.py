@@ -16,7 +16,7 @@ class light_automaton():
         for c in fsm.alphabet:
             if "[" in str(c) and "^" not in str(c):
                 charclass = str(c).replace("[", "").replace("]", "").split("-")
-                print(f"Charclass : {charclass} / len : {len(charclass)}")
+                #print(f"Charclass : {charclass} / len : {len(charclass)}")
                 if len(charclass) == 1: #charclass de forme [abc]
                     for char in charclass[0]:
                         self.Sigma.add(char)
@@ -105,11 +105,24 @@ def accept_stream(stream, fsm, motifs, method):
     res = []
     current_state = fsm.initial
     length_motif = max(len(motif) for motif in motifs)
-    
+    trad = dict()
+
+    for l in fsm.alphabet:
+        str_l = str(l)
+        if "-" in str_l and "^" not in str_l:
+            deb, fin = str_l.split("-")
+            for i in range(ord(deb), ord(fin)+1):
+                trad[chr(i)] = l
+        elif "[" in str_l and "^" not in str_l:
+            for char in str_l.replace("[", "").replace("]", ""):
+                trad[char] = l
+        elif "^" not in str_l:
+            trad[str_l] = l
+
     for c in stream:
-        charclass = Charclass(c)
+        charclass = trad.get(c, "")
         try:
-            current_state =  fsm.map[current_state][charclass]
+            current_state = fsm.map[current_state][charclass]
             if method == "state":
                 res.append(current_state)
             else:
@@ -216,7 +229,7 @@ if __name__ == "__main__":
         fsm = parse(regex).to_fsm()
         print(fsm)
         print(accept_stream("aaabcbcbcbcbacaaaaab", fsm, L, method="pos"))
-        print(light_automaton(fsm))
+        #print(light_automaton(fsm))
     else:
         alphabet = list(args.alphabet)
         mots = args.mots.split(",") if args.mots else []
