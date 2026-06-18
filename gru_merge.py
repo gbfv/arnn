@@ -113,15 +113,16 @@ class TOY_GRU(nn.Module):
         total_loss = sum(loss)
         return total_loss
 
-    def train(self, dataloader):
+    def train_model(self, dataloader, dataloader_val, val_step=10):
         optimizer = optim.Adam(self.parameters(), lr=0.0001)  # Adam optimizer
         chunk_size = 1000 #65535  # Taille des chunks pour l'entrainement
 
         # Boucle d'entraînement
         for epoch in range(TOY_GRU.epochs):
+            self.train()  # Mettre le modèle en mode entraînement
             epoch_loss = 0
             cpt = 0
-            for X, y, _ in dataloader:
+            for X, y in dataloader:
                 X, y = X.to(DEVICE), y.to(DEVICE)
                 num_chunks = X.size(1) // chunk_size if X.size(1) % chunk_size == 0 else X.size(1) // chunk_size + 1
                 hidden_state = None
@@ -152,6 +153,34 @@ class TOY_GRU(nn.Module):
                 break
             if (epoch + 1) % 10 == 0:
                 print(f'Epoch [{epoch+1}/{TOY_GRU.epochs}], Loss: {epoch_loss/cpt:.4f}')
+            if (epoch + 1) % val_step == 0:
+                val_loss = self.validate(dataloader_val)
+
+
+    def validate(self, dataloader):
+        self.eval()  # Mettre le modèle en mode évaluation
+        total_loss = 0
+        cpt = 0
+        with torch.no_grad():  # Pas de calcul de gradients pendant la validation
+            for X, y in dataloader:
+                X, y = X.to(DEVICE), y.to(DEVICE)
+                op, _ = self(X)  # Prédiction du modèle
+
+                if self.method == "binaire":
+                    loss = self.loss_binaire(op, y)
+                elif self.method == "multi-classe":
+                    loss = self.loss_multi_classe(op, y)
+                elif self.method == "multi-label":
+                    loss = self.loss_multi_label(op, y)
+
+                total_loss += loss.item()
+                cpt += 1
+
+        avg_loss = total_loss / cpt if cpt > 0 else 0
+        #print(f'Validation Loss: {avg_loss:.4f}')
+        return avg_loss
+
+
 
     ##### Evaluation #####
 

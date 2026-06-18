@@ -8,15 +8,10 @@ import argparse
 from re import finditer
 
 from logDataset import LogDataset
-#from gru_multi_test import Test_TMGRU
-#from gru_test import Test_TGRU
-#from gru_labels_test import Test_LGRU
+from torch.utils.data import DataLoader, TensorDataset
 from gru_merge import TOY_GRU
-#from automaton import Automaton
-#from automaton_multi import Automaton_multi
-#from automaton_multi_label import Automaton_multi_label
 from automaton_merge import TOY_Automaton
-from main import load_model, pad_batch
+from main import load_model
 from utils import get_device
 from build_auto import accept_stream, get_automate, light_automaton
 from isomorphe import is_isomorphic, ged_nx
@@ -146,11 +141,12 @@ def get_automaton_name(prefix, method, states):
 
 def train_model(prefix, method, num_classes=None, mots=None, data_path="test/", model_path="models/"):
     X,Y = parse_log_file(f"{data_path}/{prefix}_{method}_train.txt")
-    dataset = LogDataset(files=[], whitelist=True, x32=False)
-    dataset.data = X
-    dataset.labels = Y
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=pad_batch)
-    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
+    dataset_tr = TensorDataset(torch.tensor(X), torch.tensor(Y))
+    dataloader_tr = DataLoader(dataset_tr, batch_size=32, shuffle=True)
+
+    X_val, Y_val = parse_log_file(f"{data_path}/{prefix}_{method}_val.txt")
+    dataset_val = TensorDataset(torch.tensor(X_val), torch.tensor(Y_val))
+    dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=False)
 
     label_method = "multi-classe" if method == "state" else method # state est une version de multi-classe
     weights = None
@@ -161,16 +157,20 @@ def train_model(prefix, method, num_classes=None, mots=None, data_path="test/", 
     model = TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(DEVICE)
 
     print(f"Hyperparamètres : {model.get_hyperparameters()}")
-    model.train(dataloader)
+    model.train_model(dataloader_tr, dataloader_val)
     model_name = get_model_name(prefix, method)
     torch.save(model, f"{model_path}/{model_name}")
 
 
-def test_model(prefix, method, data_path="test/", model_path="models/"):
+def test_model(prefix, method, validation=False, data_path="test/", model_path="models/"):
     model_name = get_model_name(prefix, method).split(".")[0] # On enlève l'extension .pth car elle est ajoutée dans load_model (TODO:Fix ça)
     model = load_model(model_name, model_path).to(DEVICE)
     
-    X, Y = parse_log_file(f"{data_path}/{prefix}_{method}_test.txt")
+    if validation:
+        X, Y = parse_log_file(f"{data_path}/{prefix}_{method}_val.txt")
+    else:
+        X, Y = parse_log_file(f"{data_path}/{prefix}_{method}_test.txt")
+        
     predicted = []
     y_true = []
     for i in range(len(Y)):
@@ -218,7 +218,7 @@ def build_automate(model_name, states, prefix, method, sigma, init_build, path="
     return A
 
 
-def test_automaton(automaton_name, model, prefix, method, path="test/"):
+def test_automaton(automaton_name, model, prefix, method, validation=False, path="test/"):
     auto_path = f"{path}/{automaton_name}"
     if pathlib.Path(auto_path).is_file():
         with open(auto_path, "rb") as f:
@@ -227,7 +227,10 @@ def test_automaton(automaton_name, model, prefix, method, path="test/"):
         raise FileNotFoundError(f"Automaton file {auto_path} not found. Please build the automaton before testing.")
     print(f"Testing automaton {automaton_name}...\n")
 
-    X, Y = parse_log_file(f"{path}/{prefix}_{method}_test.txt")
+    if validation:
+        X, Y = parse_log_file(f"{path}/{prefix}_{method}_val.txt")
+    else:
+        X, Y = parse_log_file(f"{path}/{prefix}_{method}_test.txt")
     X = torch.tensor(X).to(DEVICE)
     yt = [y for sublist in Y for y in sublist]
     predicted = []
@@ -425,6 +428,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", help="Build the model (Warning : delete the previous one if existing)", action="store_true")
     parser.add_argument("-a", "--automaton", help="Build the automaton (Warning : delete the previous one if existing)", action="store_true")
     parser.add_argument("-i", "--init", help="Define the method to build the initial state of an automaton.", choices=["brute", "pred", "voteF", "voteQ", "find"], default="brute")
+    parser.add_argument("-T", "--test", help="Test the model and the automaton with the test dataset", action="store_true")
     parser.add_argument("-dot", "--dot", help="Generate DOT file for the reduced automaton", action="store_true")
     parser.add_argument("-pm", "--path_model", help="Path to save/load the model", default="models")
     parser.add_argument("-dp", "--path_data", help="Path to save/load the dataset", default="test")
@@ -443,6 +447,7 @@ if __name__ == "__main__":
 
 
     # création du dataset
+    #TODO : voir pour factoriser le code
     if args.dataset:
         print("\n\n[*] Creating dataset...\n")
         dataset_name = f"{data_path}/{prefix}_{methode}"
@@ -453,6 +458,13 @@ if __name__ == "__main__":
         else:
             labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
         create_log(words, labels, f"{dataset_name}_train.txt")
+        # Validation
+        words = generate_words(params, length=400, nbr=1000)
+        if prefix in dict_automate:
+            labels = get_label(automate, words, params["mots"], final_states, methode)
+        else:
+            labels = [accept_stream(word, automate, params["mots"], methode) for word in words]
+        create_log(words, labels, f"{dataset_name}_val.txt")
         # Test
         words = generate_words(params, length=400, nbr=1000)
         if prefix in dict_automate:
@@ -478,7 +490,7 @@ if __name__ == "__main__":
             train_model(prefix, methode, model_path=model_path, data_path=data_path)
 
     print("\n\n[*] Testing model...\n")
-    test_model(prefix, methode, model_path=model_path, data_path=data_path)
+    test_model(prefix, methode, validation=args.test, model_path=model_path, data_path=data_path)
 
     model_name = get_model_name(prefix, methode).split(".")[0] # On enlève l'extension .pth car elle est ajoutée dans load_model (TODO:Fix ça)
     model = load_model(model_name, model_path).to(DEVICE)
@@ -493,7 +505,7 @@ if __name__ == "__main__":
     
     print("\n\n[*] Testing automaton...\n")
     auto_name = get_automaton_name(prefix, methode, states)
-    test_automaton(auto_name, model, prefix, methode, path=data_path)
+    test_automaton(auto_name, model, prefix, methode, validation=args.test, path=data_path)
 
 
 
