@@ -258,7 +258,7 @@ def find_motifs(A:TOY_Automaton, params, motif_length, method, init_state=-1):
     for X in words:
         X = list(X)
         for i in range(len(X)):
-            X[i] = int(X[i], 16)-10 # Convertir les caractères 'a', 'b', 'c', ... en 0, 1, 2, ...
+            X[i] = ord(X[i]) - 97  # Convertir les caractères 'a', 'b', 'c', ... en 0, 1, 2, ...
 
         X = torch.tensor(X).to(DEVICE)
         pred, hist = A.predict(X, init_state=init_state)
