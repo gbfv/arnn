@@ -449,10 +449,51 @@ def perf_by_fsm():
         mean_f2_0 = np.mean([x[0] for x in F2])
         add_log("perf","perf_log.log",f"ID:{id_auto},NB_WORDS:{len(mots)},LEN_WORDS:{len(mots[0])},F1_M:{mean_f1},F1_M0:{mean_f1_0},F1_A:{mean_f2},F1_A0:{mean_f2_0},ISO:{iso}")
 
+def make_weights(id_w,mots):
+    if id_w == 0:
+        return [[1.0]+[16.0]*(len(mot)) for mot in mots]
+    if id_w == 1:
+        return [[1.0]+ ([0.1]*(len(mot)-1))+[256.0] for mot in mots]
+    if id_w == 2:
+        return [[float(pow(2,i)) for i in range(len(mot)+1)] for mot in mots]
+    if id_w == 3:
+        return [[float(pow(2,i)) for i in range(4,len(mot)+5)] for mot in mots]
+    if id_w == 4:
+        return [[256.0]+ ([0.1]*(len(mot)-1))+[256.0] for mot in mots]
+    if id_w == 5:
+        return [[float(pow(2,len(mot)-1))] + [float(pow(2,i)) for i in range(len(mot))] for mot in mots]
+    if id_w == 6:
+        return [[1.0]+[1.0]*(len(mot)) for mot in mots]
+    if id_w == 7:
+        return [[256.0]+ ([64.0]*(len(mot)-1))+[256.0] for mot in mots]
+
+
+def test_weights():
+    l = [x for x in range(NB_IN_TEST+1)]
+    random.shuffle(l)
+    for id_auto in l:
+        automate, final_states, info_automate = get_fsm_by_id(id_auto)
+        dataset_name = "test/el_grand_test"
+        create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 60, dataset_name)
+        mots = info_automate["mots"]
+        for weight_method in range(8):
+            weights = make_weights(weight_method,mots)
+            M = create_model(mots, "multi-label", weights)
+            train_model(M, 500, dataset_name)
+            F1 = test_model(M, "multi-label", dataset_name)
+            A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+            A.minimize()
+            init_state = A.find_initial_state()
+            F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
+            B = light_automaton(automate)
+            iso = is_isomorphic(B, A)[0]
+            mean_f1 = np.mean([x[-1] for x in F1])
+            mean_f2 = np.mean([x[-1] for x in F2])
+            add_log("perf","weight.log",f"ID:{id_auto},NB_WORDS:{len(mots)},LEN_WORDS:{len(mots[0])},F1_M:{mean_f1},F1_A:{mean_f2},ISO:{iso},WEIGHTS:{weight_method}")
 
 def show_automation(auto,infos):
     print(f"{auto}\n{infos}")
 
 
 if __name__ == "__main__":
-    perf_by_fsm()
+    test_weights()
