@@ -422,9 +422,37 @@ def nuage_de_points():
             train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
             mean_f1 = np.mean([x[-1] for x in F1])
-            add_log("nuage", "nuage_log.log", f"ID:{
-                    id_auto},NB_WORDS:{k},F1:{mean_f1}")
+            add_log("nuage", "nuage_log.log", f"ID:{id_auto},NB_WORDS:{k},F1:{mean_f1}")
+
+
+def perf_by_fsm():
+    l = [x for x in range(NB_IN_TEST+1)]
+    random.shuffle(l)
+    for id_auto in l:
+        automate, final_states, info_automate = get_fsm_by_id(id_auto)
+        dataset_name = "test/el_grand_test"
+        create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 40, dataset_name)
+        mots = info_automate["mots"]
+        weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+        M = create_model(mots, "multi-label", weights)
+        train_model(M, 500, dataset_name)
+        F1 = test_model(M, "multi-label", dataset_name)
+        A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+        A.minimize()
+        init_state = A.find_initial_state()
+        F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
+        B = light_automaton(automate)
+        iso = is_isomorphic(B, A)[0]
+        mean_f1 = np.mean([x[-1] for x in F1])
+        mean_f2 = np.mean([x[-1] for x in F2])
+        mean_f1_0 = np.mean([x[0] for x in F1])
+        mean_f2_0 = np.mean([x[0] for x in F2])
+        add_log("perf","perf_log.log",f"ID:{id_auto},NB_WORDS:{len(mots)},LEN_WORDS:{len(mots[0])},F1_M:{mean_f1},F1_M0:{mean_f1_0},F1_A:{mean_f2},F1_A0:{mean_f2_0},ISO:{iso}")
+
+
+def show_automation(auto,infos):
+    print(f"{auto}\n{infos}")
 
 
 if __name__ == "__main__":
-    the_number_of_states_needed()
+    perf_by_fsm()

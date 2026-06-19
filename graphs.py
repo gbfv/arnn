@@ -60,16 +60,15 @@ def states_graph(filename):
         if f.startswith("nb_state_id"):
             data = load_log_file_for_benchmark(filename + f)
             STs = [int(getattr(x,"STATES")) for x in data]
-            org = float(STs[1])
+            org = float(STs[3])
             Sts = [float(x) / org for x in STs]
             F1s = [float(getattr(x,"F1")) for x in data]
-            plt.plot(Sts,F1s)
-    plt.xlabel("Nombre de k clusters (en pourcentage du nombre d'état de l'automate originel)")
+            plt.plot(Sts,F1s,label=f"Auto:{f.split("nb_state_id")[1]}")
+    plt.xlabel("Nombre de k clusters (en proportion du nombre d'état de l'automate originel)")
     plt.ylabel("F1 score")
     plt.title("F1 scores des automates en fonction du nombre de clusters crées")
-    plt.yscale("log")
-    plt.axis((-1,20,-1,1.5))
+    plt.legend()
     plt.show()
 
 if __name__ == "__main__":
-    states_graph("benchmark_data/default/")
+    states_graph("benchmark_data/nb_clusters/logs/default/")
