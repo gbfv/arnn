@@ -71,6 +71,7 @@ def no_overlap(alphabet, nbr, length, reset=None):
     cpy_alphabet = alphabet.copy()
     combinaisons = len(alphabet)**length if reset is None else len(alphabet)**(length-1)
     if nbr > combinaisons:
+        return no_overlap(alphabet,nbr -1,length +1,reset)
         raise ValueError(f"Impossible de générer {nbr} mots de longueur {length} avec l'alphabet donné. Nombre maximum de combinaisons : {combinaisons}")
 
     attempts = 0
