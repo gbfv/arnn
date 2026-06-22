@@ -296,7 +296,7 @@ def create_automatas():
     i = 0
     while range(500):
         automate, final_states, info_automate = create_first_auto(
-            "ml", len_words=5)  # el_automate
+            "ml")  # el_automate
         N = len(automate.states)
         Z = len(info_automate["mots"]) * len(info_automate["mots"][0])
         pak = {"automate": automate,
@@ -496,4 +496,4 @@ def show_automation(auto,infos):
 
 
 if __name__ == "__main__":
-    test_weights()
+    create_automatas()

@@ -70,5 +70,17 @@ def states_graph(filename):
     plt.legend()
     plt.show()
 
+
+def perf_graph(filename):
+    pass
+    plt.cla()
+    data = load_log_file_for_benchmark(filename)
+    Z = [int(getattr(x,"LEN_WORDS")) for x in data]
+    F = [float(getattr(x,"F1_M")) for x in data]
+    FA = [float(getattr(x,"F1_A")) for x in data]
+    plt.scatter(Z,F)
+    plt.scatter(Z,FA)
+    plt.show()
+
 if __name__ == "__main__":
-    states_graph("benchmark_data/nb_clusters/logs/default/")
+    perf_graph("benchmark_data/perf_test_logs/logs/default/perf_log.log")
