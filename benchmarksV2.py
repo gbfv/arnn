@@ -211,11 +211,11 @@ def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode
 
 
 def test_of_tests():
-    automate, final_states, info_automate = create_first_auto(
-        "ml", len_words=3, nb_words=10)  # el_automate
+    automate, final_states, info_automate = get_fsm_by_id(175) # el_automate
+    show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"
     create_dataset_and_save_it(
-        automate, info_automate, "multi-label", 1000, 1000, 400, 30, dataset_name)
+        automate, info_automate, "multi-label", 1000, 1000, 400, 400, dataset_name)
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
     M = create_model(mots, "multi-label", weights)
@@ -307,14 +307,14 @@ def create_automatas():
     pass
 
 
-NB_IN_TEST = 500
+NB_IN_TEST = 150
 
 
 def get_fsm_by_id(id: int):
-    all_f = os.listdir("fsms")
+    all_f = os.listdir("fsms/Old_data")
     for f in all_f:
         if int(f.split("_")[1]) == id:
-            data = load_fsm(f.split(".")[0], path="fsms/")
+            data = load_fsm(f.split(".")[0], path="fsms/Old_data/")
             automate = data["automate"]
             final_states = data["final_states"]
             params = data["params"]
@@ -408,12 +408,13 @@ def the_number_of_states_needed():
 
 
 def nuage_de_points():
-    while True:
-        id_auto = random.randint(0, NB_IN_TEST)
+    l = [x for x in range(NB_IN_TEST+1)]
+    random.shuffle(l)
+    for id_auto in l:
         automate, final_states, info_automate = get_fsm_by_id(
             id_auto)  # el_automate
         dataset_name = "test/el_grand_test"
-        for k in range(100, 2000, 100):
+        for k in range(100, 2500, 100):
             create_dataset_and_save_it(
                 automate, info_automate, "multi-label", k, k, 400, 40, dataset_name)
             mots = info_automate["mots"]
@@ -496,4 +497,4 @@ def show_automation(auto,infos):
 
 
 if __name__ == "__main__":
-    create_automatas()
+    nuage_de_points()

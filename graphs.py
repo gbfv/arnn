@@ -63,8 +63,8 @@ def states_graph(filename):
             org = float(STs[3])
             Sts = [float(x) / org for x in STs]
             F1s = [float(getattr(x,"F1")) for x in data]
-            plt.plot(Sts,F1s,label=f"Auto:{f.split("nb_state_id")[1]}")
-    plt.xlabel("Nombre de k clusters (en proportion du nombre d'état de l'automate originel)")
+            plt.plot(STs,F1s,label=f"Auto:{f.split("nb_state_id")[1]}")
+    plt.xlabel("Nombre de k clusters")
     plt.ylabel("F1 score")
     plt.title("F1 scores des automates en fonction du nombre de clusters crées")
     plt.legend()
@@ -81,9 +81,9 @@ def perf_graph(filename):
     plt.scatter(Z,F,label="F1 score modele")
     plt.scatter(Z,FA,label="F1 score automate")
     plt.legend()
-    plt.xlabel("Nombre de mot dans le motif")
+    plt.xlabel("Nombre de mots dans le motif")
     plt.ylabel("Score F1")
-    plt.title("F1 scores en fonction du nombre de mots dans l'automate")
+    plt.title("Score F1 en fonction du nombre de mots dans l'automate")
     plt.show()
 
 
@@ -125,5 +125,27 @@ def weight_graph(filename):
     plt.title("F1 score de modèles par différentes fonctions de poids")
     plt.legend()
     plt.show()
+
+
+def nuage_graph(filename):
+    plt.cla()
+    data = load_log_file_for_benchmark(filename)
+    all_autos = list(set([getattr(x,"ID") for x in data]))
+    for id in all_autos:
+        nb_words_data = [int(getattr(x,"NB_WORDS")) for x in data if getattr(x,"ID") == id]
+        F1_data = [float(getattr(x,"F1")) for x in data if getattr(x,"ID") == id]
+        plt.plot(nb_words_data,F1_data,alpha=0.1)
+
+    all_words = list(set([int(getattr(x,"NB_WORDS")) for x in data]))
+    all_words.sort()
+    moy = []
+    for w in all_words:
+        moy.append(np.mean([float(getattr(x,"F1")) for x in data if int(getattr(x,"NB_WORDS")) == w]))
+    print(moy)
+    plt.plot(all_words,moy)
+    plt.plot()
+    
+    plt.show()
+
 if __name__ == "__main__":
-    perf_graph("benchmark_data/perf_test_logs/logs/default/perf_log.log")
+    nuage_graph("benchmark_data/nuage/logs/default/nuage_log.log")
