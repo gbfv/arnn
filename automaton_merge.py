@@ -285,7 +285,7 @@ class TOY_Automaton:
         if self.method != "binaire":
             for q in Q:
                 part = [v for v, part in partition2q.items() if part == q][0] #find the partition corresponding to q
-                if len(partitions[part]) == 0:
+                if isinstance(partitions[part],set):
                     rank[q] = self.rank[q]
                 else:
                     rank[q] = self.rank[partitions[part][0]]

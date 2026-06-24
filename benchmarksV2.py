@@ -496,5 +496,29 @@ def show_automation(auto,infos):
     print(f"{auto}\n{infos}")
 
 
+def stress_test_dataset():
+    l = [x for x in range(NB_IN_TEST+1)]
+    random.shuffle(l)
+    for id_auto in l:
+        automate, final_states, info_automate = get_fsm_by_id(id_auto)
+        dataset_name = "test/el_grand_test"
+        for i in range(20):
+            create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 40, dataset_name)
+            mots = info_automate["mots"]
+            weights = make_weights(0,mots)
+            M = create_model(mots, "multi-label", weights)
+            train_model(M, 500, dataset_name)
+            F1 = test_model(M, "multi-label", dataset_name)
+            A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+            A.minimize()
+            init_state = A.find_initial_state()
+            F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
+            B = light_automaton(automate)
+            iso = is_isomorphic(B, A)[0]
+            mean_f1 = np.mean([x[-1] for x in F1])
+            mean_f2 = np.mean([x[-1] for x in F2])
+            add_log("perf","stress.log",f"ID:{id_auto},N:{i},NB_WORDS:{len(mots)},LEN_WORDS:{len(mots[0])},F1_M:{mean_f1},F1_A:{mean_f2},ISO:{iso}")
+
+
 if __name__ == "__main__":
-    nuage_de_points()
+    stress_test_dataset()
