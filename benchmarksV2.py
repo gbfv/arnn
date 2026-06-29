@@ -211,7 +211,7 @@ def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode
 
 
 def test_of_tests():
-    automate, final_states, info_automate = get_fsm_by_id(175) # el_automate
+    automate, final_states, info_automate = get_fsm_by_id(75) # el_automate
     show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"
     create_dataset_and_save_it(
@@ -311,10 +311,10 @@ NB_IN_TEST = 150
 
 
 def get_fsm_by_id(id: int):
-    all_f = os.listdir("fsms/Old_data")
+    all_f = os.listdir("fsms/New_data")
     for f in all_f:
         if int(f.split("_")[1]) == id:
-            data = load_fsm(f.split(".")[0], path="fsms/Old_data/")
+            data = load_fsm(f.split(".")[0], path="fsms/New_data/")
             automate = data["automate"]
             final_states = data["final_states"]
             params = data["params"]
@@ -521,4 +521,4 @@ def stress_test_dataset():
 
 
 if __name__ == "__main__":
-    stress_test_dataset()
+    test_of_tests()

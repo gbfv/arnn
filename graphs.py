@@ -147,5 +147,18 @@ def nuage_graph(filename):
     
     plt.show()
 
+def stress_test_graph(filename):
+    plt.cla()
+    data = load_log_file_for_benchmark(filename)
+    Z = [int(getattr(x,"NB_WORDS")) * int(getattr(x,"LEN_WORDS")) for x in data]
+    I = [int(getattr(x,"ID")) for x in data]
+    M = [float(getattr(x,"F1_M")) for x in data]
+    A = [float(getattr(x,"F1_A")) for x in data]
+    plt.scatter(Z,M,label="Modele")
+    plt.scatter(Z,A,label="Automate")
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
-    nuage_graph("benchmark_data/nuage/logs/default/nuage_log.log")
+    stress_test_graph("benchmark_data/stress_test_exp2/logs/default/stress.log")
