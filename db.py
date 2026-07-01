@@ -36,8 +36,8 @@ def setup_db():
 
         nb_test INTEGER,
         len_test INTEGER,
-        data_train BLOB
-        data_val BLOB
+        data_train BLOB,
+        data_val BLOB,
         data_test BLOB
     );""")
     curr.execute("""CREATE TABLE IF NOT EXISTS Models(
@@ -64,5 +64,55 @@ def setup_db():
     DB.commit()
     curr.close()
 
+def get_raw_bytes(filename):
+    return open(filename,"rb").read()
+
+def save_raw_bytes(data,filename):
+    fd = open(filename,"wb")
+    fd.write(data)
+    fd.close()
+
+def add_entry_lang(name,size_sigma,nb_words,len_words,size_auto,reset,data):
+    global DB
+    curr = get_cursor()
+    curr.execute("INSERT INTO Languages (name,size_sigma,nb_words,len_words,size_auto,reset,data) VALUES (?,?,?,?,?,?,?);",(name,size_sigma,nb_words,len_words,size_auto,reset,data))
+    DB.commit()
+
+def add_entry_dataset(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test):
+    global DB
+    curr = get_cursor()
+    curr.execute("INSERT INTO Datasets (lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?);",(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test))
+    DB.commit()
+    pass
+
+def add_entry_models(
+        lang ,
+        dataset ,
+        name ,
+        epochs ,
+        weights ,
+        data):
+    global DB
+    curr = get_cursor()
+    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data) VALUES (?,?,?,?,?,?);",(lang,dataset,name,epochs,weights,data))
+    DB.commit()
+
+def add_entry_auto(
+    lang ,
+    dataset ,
+    model ,
+    name ,
+    nb_explore ,
+    nb_clusters ,
+    nb_etats ,
+    data ):
+    global DB
+    curr = get_cursor()
+    curr.execute("INSERT INTO Models (lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?,?);",(lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data))
+    DB.commit()
+
+
 if __name__ == "__main__":
     setup_db()
+    d = get_raw_bytes("test/ml_multi-classe_test.txt")
+    add_entry_dataset(1,"TET","ml",1,2,2,2,2,2,d,d,d)
