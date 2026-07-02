@@ -1,5 +1,4 @@
 import sqlite3
-import benchmarksV2
 
 DB = None
 
@@ -112,7 +111,12 @@ def add_entry_auto(
     DB.commit()
 
 
+def get_data(command):
+    global DB
+    curr = get_cursor()
+    curr.execute(command)
+    return curr.fetchall()
+
 if __name__ == "__main__":
     setup_db()
-    d = get_raw_bytes("test/ml_multi-classe_test.txt")
-    add_entry_dataset(1,"TET","ml",1,2,2,2,2,2,d,d,d)
+    print(get_data("SELECT * FROM Models;"))
