@@ -503,13 +503,13 @@ def stress_test_dataset():
         automate, final_states, info_automate = get_fsm_by_id(id_auto)
         dataset_name = "test/el_grand_test"
         for i in range(20):
-            create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 40, dataset_name)
+            create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 400, dataset_name)
             mots = info_automate["mots"]
             weights = make_weights(0,mots)
             M = create_model(mots, "multi-label", weights)
             train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
-            A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+            A = get_automate_from_model(M, info_automate, int(len(automate.states)*2.5), dataset_name, "pred")
             A.minimize()
             init_state = A.find_initial_state()
             F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
@@ -520,5 +520,28 @@ def stress_test_dataset():
             add_log("perf","stress.log",f"ID:{id_auto},N:{i},NB_WORDS:{len(mots)},LEN_WORDS:{len(mots[0])},F1_M:{mean_f1},F1_A:{mean_f2},ISO:{iso}")
 
 
+def len_words_test():
+    l = [x for x in range(NB_IN_TEST+1)]
+    random.shuffle(l)
+    for id_auto in l:
+        automate, final_states, info_automate = get_fsm_by_id(
+            id_auto)  # el_automate
+        dataset_name = "test/el_grand_test"
+        for k in range(10, 1000, 100):
+            create_dataset_and_save_it(
+                automate, info_automate, "multi-label",1000, 1000, k, k, dataset_name)
+            mots = info_automate["mots"]
+            weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
+            M = create_model(mots, "multi-label", weights)
+            train_model(M, 500, dataset_name)
+            F1 = test_model(M, "multi-label", dataset_name)
+            A = get_automate_from_model(M, info_automate,int(len(automate.states)*2.5), dataset_name, "pred")
+            A.minimize()
+            init_state = A.find_initial_state()
+            F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
+            mean_f1 = np.mean([x[-1] for x in F1])
+            mean_f2 = np.mean([x[-1] for x in F2])
+            add_log("len_words", "len_words.log", f"ID:{id_auto},LEN_WORDS:{k},F1_M:{mean_f1},F1_A:{mean_f2}")
+
 if __name__ == "__main__":
-    test_of_tests()
+    len_words_test()

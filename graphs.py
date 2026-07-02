@@ -161,4 +161,4 @@ def stress_test_graph(filename):
 
 
 if __name__ == "__main__":
-    stress_test_graph("benchmark_data/stress_test_exp2/logs/default/stress.log")
+    nuage_graph("benchmark_data/nuage/logs/default/nuage_log.log")
