@@ -211,11 +211,11 @@ def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode
 
 
 def test_of_tests():
-    automate, final_states, info_automate = get_fsm_by_id(75) # el_automate
+    automate, final_states, info_automate = get_fsm_by_id(5) # el_automate
     show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"
     create_dataset_and_save_it(
-        automate, info_automate, "multi-label", 1000, 1000, 400, 400, dataset_name)
+        automate, info_automate, "multi-label", 1000, 1000, 400, 40, dataset_name)
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
     M = create_model(mots, "multi-label", weights)
@@ -544,4 +544,4 @@ def len_words_test():
             add_log("len_words", "len_words.log", f"ID:{id_auto},LEN_WORDS:{k},F1_M:{mean_f1},F1_A:{mean_f2}")
 
 if __name__ == "__main__":
-    len_words_test()
+    test_of_tests()

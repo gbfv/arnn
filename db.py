@@ -1,6 +1,9 @@
 import sqlite3
+import pickle
+import torch
 
 DB = None
+DEVICE = get_device()
 
 def get_cursor():
     global DB
@@ -116,6 +119,73 @@ def get_data(command):
     curr = get_cursor()
     curr.execute(command)
     return curr.fetchall()
+
+def load_language(id:int):
+    curr = db.get_cursor()
+    curr.execute("SELECT data FROM Languages WHERE id = ?;",(id,))
+    data = curr.fetchall()
+    if len(data) != 1:
+        print("Problème avec la récupération du Language")
+        return
+    os.makedirs("db_files",exist_ok=True)
+    data = data[0][0]
+    data = pickle.loads(data)
+    automate = data["automate"]
+    final_states = data["final_states"]
+    params = data["params"]
+    print("ID AUTO UTILISE:", id)
+    return automate, final_states, params
+    
+def give_raw_bytes_language(auto,finals,infos):
+    pak = {"automate": auto,"final_states": finals, "params": infos}
+    return pickle.dumps(pak)
+
+
+def load_datasets_to_file(id:int):
+    curr = db.get_cursor()
+    curr.execute("SELECT data_train,data_val,data_test FROM Datasets WHERE id = ?;",(id,))
+    data = curr.fetchall()
+    if len(data) != 1:
+        print("Problème avec la récupération du Dataset")
+        return
+    data = data[0]
+    open("test/db_files_train.txt","w").write(data[0])
+    open("test/db_files_val.txt","w").write(data[1])
+    open("test/db_files_test.txt","w").write(data[2])
+    return
+
+def give_raw_bytes_model(M):
+    torch.save(M,"tests/tmp_model")
+    with open("tests/tmp_model","rb") as f:
+        return f.read()
+
+def load_model(id:int):
+    curr = db.get_cursor()
+    curr.execute("SELECT data FROM Models WHERE id = ?;",(id,))
+    data = curr.fetchall()
+    if len(data) != 1:
+        print("Problème avec la récupération du Model")
+        return
+    data = data[0][0]
+    f = open("tests/tmp_model","wb")
+    f.write(data)
+    f.close()
+    return torch.load("tests/tmp_model", weights_only=False).to(DEVICE)
+
+def give_raw_bytes_auto(A):
+    return pickle.dumps(A)
+
+def load_auto_from_db(id:int):
+    curr = db.get_cursor()
+    curr.execute("SELECT data FROM Autos WHERE id = ?;",(id,))
+    data = curr.fetchall()
+    if len(data) != 1:
+        print("Problème avec la récupération du Model")
+        return
+    data = data[0][0]
+    return pickle.loads(data)
+
+
 
 if __name__ == "__main__":
     setup_db()

@@ -1,5 +1,11 @@
 import random as rng
+from typing import List
+import pickle
+import benchmarksV2 as bc
 
+import db
+import numpy as np
+import os
 
 class Experiment():
     def __init__(self,id_lang):
@@ -58,5 +64,41 @@ class Experiment():
         all_vars = [x for x in dir(self) if not x.startswith("__")]
         return "|".join([f"{x}:{getattr(self,x)}" for x in all_vars if not str(getattr(self,x)).startswith("<")])
 
-i = Experiment(3)
-print(i)
+def next_gen(list_expes:List[Experiment],scores:List[float]):
+    rank_i = np.argsort(scores)
+    rank_i = np.flip(rank_i)[:len(list_expes)//2]
+    new_expes = []
+    for best_i in rank_i:
+        new_expes.append(list_expes[best_i].clone(0.99))
+        new_expes.append(list_expes[best_i].clone(0.99))
+    return new_expes
+
+
+def load_language(id:int):
+    curr = db.get_cursor()
+    curr.execute("SELECT data FROM Languages WHERE id = ?;",(id,))
+    data = curr.fetchall()
+    if len(data) != 1:
+        print("Problème avec la récupération du Language")
+        return
+    os.makedirs("db_files",exist_ok=True)
+    data = data[0][0]
+    data = pickle.loads(data)
+    automate = data["automate"]
+    final_states = data["final_states"]
+    params = data["params"]
+    print("ID AUTO UTILISE:", id)
+    return automate, final_states, params
+    
+def give_raw_bytes_language(auto,finals,infos):
+    pak = {"automate": auto,"final_states": finals, "params": infos}
+    return pickle.dumps(pak)
+
+
+def make_expe_and_log(expe:Experiment):
+    pass
+
+db.setup_db()
+a,f,i = load_language(1)
+
+bc.show_automation(a,i)
