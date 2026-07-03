@@ -74,31 +74,37 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     return new_expes
 
 
-def load_language(id:int):
+
+
+def get_ids_dataset(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_test):
     curr = db.get_cursor()
-    curr.execute("SELECT data FROM Languages WHERE id = ?;",(id,))
+    curr.execute("""SELECT id FROM Datasets WHERE 
+        lang = ? AND
+        label = ? AND
+        nb_train = ? AND
+        len_train = ? AND
+
+        nb_val = ? AND
+        len_val = ? AND
+
+        nb_test = ? AND
+        len_test = ?
+        """,(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_test))
     data = curr.fetchall()
-    if len(data) != 1:
-        print("Problème avec la récupération du Language")
-        return
-    os.makedirs("db_files",exist_ok=True)
-    data = data[0][0]
-    data = pickle.loads(data)
-    automate = data["automate"]
-    final_states = data["final_states"]
-    params = data["params"]
-    print("ID AUTO UTILISE:", id)
-    return automate, final_states, params
-    
-def give_raw_bytes_language(auto,finals,infos):
-    pak = {"automate": auto,"final_states": finals, "params": infos}
-    return pickle.dumps(pak)
+    return data
+
 
 
 def make_expe_and_log(expe:Experiment):
+    auto,finals,infos = db.load_language(expe.id_lang)
+    dataset_name = "test/db_files"
+    # Get the dataset
+    ids = get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)
+    if len(ids) == 0:
+        print("No dataset found creating it....")
+        bc.create_dataset_and_save_it(auto,infos,expe.label,expe.nb_test,expe.nb_train,expe.len_test,expe.len_train,dataset_name)
+    
+
+
+if __name__ == "__main__":
     pass
-
-db.setup_db()
-a,f,i = load_language(1)
-
-bc.show_automation(a,i)

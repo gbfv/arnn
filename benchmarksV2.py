@@ -494,7 +494,7 @@ def test_weights():
 
 def show_automation(auto,infos):
     print(f"{auto}\n{infos}")
-
+    
 
 def stress_test_dataset():
     l = [x for x in range(NB_IN_TEST+1)]

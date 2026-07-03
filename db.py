@@ -154,6 +154,13 @@ def load_datasets_to_file(id:int):
     open("test/db_files_test.txt","w").write(data[2])
     return
 
+def capture_datasets():
+    d1 = open("test/db_files_train.txt","r").read()
+    d2 = open("test/db_files_val.txt","r").read()
+    d3 = open("test/db_files_test.txt","r").read()
+    return d1,d2,d3
+    
+
 def give_raw_bytes_model(M):
     torch.save(M,"tests/tmp_model")
     with open("tests/tmp_model","rb") as f:
@@ -184,6 +191,7 @@ def load_auto_from_db(id:int):
         return
     data = data[0][0]
     return pickle.loads(data)
+
 
 
 
