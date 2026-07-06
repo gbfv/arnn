@@ -156,9 +156,34 @@ def stress_test_graph(filename):
     A = [float(getattr(x,"F1_A")) for x in data]
     plt.scatter(Z,M,label="Modele")
     plt.scatter(Z,A,label="Automate")
+    plt.title("F1 scores en fonction de la complèxité du language (max(100,x2.5 états))")
+    plt.xlabel("Nb mots * longueur")
+    plt.ylabel("F1 scores")
     plt.legend()
     plt.show()
 
 
+def len_graph(filename):
+    plt.cla()
+    data = load_log_file_for_benchmark(filename)
+    all_autos = list(set([getattr(x,"ID") for x in data]))
+    for id in all_autos:
+        nb_words_data = [int(getattr(x,"LEN_WORDS")) for x in data if getattr(x,"ID") == id]
+        F1_data = [float(getattr(x,"F1_A")) for x in data if getattr(x,"ID") == id]
+        plt.plot(nb_words_data,F1_data,alpha=0.1)
+
+    all_words = list(set([int(getattr(x,"LEN_WORDS")) for x in data]))
+    all_words.sort()
+    moy = []
+    for w in all_words:
+        moy.append(np.mean([float(getattr(x,"F1_A")) for x in data if int(getattr(x,"LEN_WORDS")) == w]))
+    plt.title("F1 score du modèle en fonction de la taille des mots de l'entrainement")
+    plt.xlabel("Longeur mot entrainement")
+    plt.ylabel("F1 score modèle")
+    plt.plot(all_words,moy)
+    plt.plot()
+    
+    plt.show()
+
 if __name__ == "__main__":
-    nuage_graph("benchmark_data/nuage/logs/default/nuage_log.log")
+    stress_test_graph("benchmark_data/perf_test_2/logs/default/stress.log")
