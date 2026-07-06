@@ -2,6 +2,10 @@ import sqlite3
 import pickle
 import torch
 
+from utils import get_device
+
+import os
+
 DB = None
 DEVICE = get_device()
 
@@ -110,7 +114,7 @@ def add_entry_auto(
     data ):
     global DB
     curr = get_cursor()
-    curr.execute("INSERT INTO Models (lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?,?);",(lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data))
+    curr.execute("INSERT INTO Autos (lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?,?);",(lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data))
     DB.commit()
 
 
@@ -121,12 +125,12 @@ def get_data(command):
     return curr.fetchall()
 
 def load_language(id:int):
-    curr = db.get_cursor()
+    curr = get_cursor()
     curr.execute("SELECT data FROM Languages WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
         print("Problème avec la récupération du Language")
-        return
+        return None,None,None
     os.makedirs("db_files",exist_ok=True)
     data = data[0][0]
     data = pickle.loads(data)
@@ -142,7 +146,7 @@ def give_raw_bytes_language(auto,finals,infos):
 
 
 def load_datasets_to_file(id:int):
-    curr = db.get_cursor()
+    curr = get_cursor()
     curr.execute("SELECT data_train,data_val,data_test FROM Datasets WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
@@ -162,28 +166,28 @@ def capture_datasets():
     
 
 def give_raw_bytes_model(M):
-    torch.save(M,"tests/tmp_model")
-    with open("tests/tmp_model","rb") as f:
+    torch.save(M,"test/tmp_model")
+    with open("test/tmp_model","rb") as f:
         return f.read()
 
 def load_model(id:int):
-    curr = db.get_cursor()
+    curr = get_cursor()
     curr.execute("SELECT data FROM Models WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
         print("Problème avec la récupération du Model")
         return
     data = data[0][0]
-    f = open("tests/tmp_model","wb")
+    f = open("test/tmp_model","wb")
     f.write(data)
     f.close()
-    return torch.load("tests/tmp_model", weights_only=False).to(DEVICE)
+    return torch.load("test/tmp_model", weights_only=False).to(DEVICE)
 
 def give_raw_bytes_auto(A):
     return pickle.dumps(A)
 
 def load_auto_from_db(id:int):
-    curr = db.get_cursor()
+    curr = get_cursor()
     curr.execute("SELECT data FROM Autos WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
