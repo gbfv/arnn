@@ -177,9 +177,9 @@ def len_graph(filename):
     moy = []
     for w in all_words:
         moy.append(np.mean([float(getattr(x,"F1_A")) for x in data if int(getattr(x,"LEN_WORDS")) == w]))
-    plt.title("F1 score du modèle en fonction de la taille des mots de l'entrainement")
+    plt.title("F1 score de l'automate en fonction de la taille des mots de l'entrainement")
     plt.xlabel("Longeur mot entrainement")
-    plt.ylabel("F1 score modèle")
+    plt.ylabel("F1 score automate")
     plt.plot(all_words,moy)
     plt.plot()
     

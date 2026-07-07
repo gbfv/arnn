@@ -53,7 +53,9 @@ def setup_db():
         name STRING,
         epochs INTEGER,
         weights INTEGER,
-        data BLOB
+        F1_mean FLOAT,
+        data BLOB,
+        data_specs_only BLOB
     );""")
     curr.execute("""CREATE TABLE IF NOT EXISTS Autos(
         id INTEGER  PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +66,7 @@ def setup_db():
         nb_explore INTEGER,
         nb_clusters INTEGER,
         nb_etats INTEGER,
+        F1_mean FLOAT,
         data BLOB
     );""")
 
@@ -97,10 +100,11 @@ def add_entry_models(
         name ,
         epochs ,
         weights ,
-        data):
+        data,
+        data_specs):
     global DB
     curr = get_cursor()
-    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data) VALUES (?,?,?,?,?,?);",(lang,dataset,name,epochs,weights,data))
+    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data,data_specs_only) VALUES (?,?,?,?,?,?,?);",(lang,dataset,name,epochs,weights,data,data_specs))
     DB.commit()
 
 def add_entry_auto(
@@ -170,6 +174,11 @@ def give_raw_bytes_model(M):
     with open("test/tmp_model","rb") as f:
         return f.read()
 
+def give_raw_bytes_model_specs(M):
+    torch.save(M.state_dict(),"test/tmp_model_specs")
+    with open("test/tmp_model_specs","rb") as f:
+        return f.read()
+
 def load_model(id:int):
     curr = get_cursor()
     curr.execute("SELECT data FROM Models WHERE id = ?;",(id,))
@@ -198,6 +207,18 @@ def load_auto_from_db(id:int):
 
 
 
+def update_model_score(id_model:int,score:float):
+    global DB
+    curr = get_cursor()
+    curr.execute("UPDATE Models SET F1_mean = ? WHERE id = ?;",(score,id_model))
+    DB.commit()
+
+def update_auto_score(id_auto:int,score:float):
+    global DB
+    curr = get_cursor()
+    curr.execute("UPDATE Autos SET F1_mean = ? WHERE id = ?;",(score,id_auto))
+    DB.commit()
+    
 
 if __name__ == "__main__":
     setup_db()

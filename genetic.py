@@ -20,7 +20,7 @@ class Experiment():
         self.len_test = rng.randrange(50,700,20)
 
         self.label = rng.choice(["multi-label"])
-        self.epochs = 500
+        self.epochs = 1000
 
         self.weight_id = rng.randint(0,3)
 
@@ -68,10 +68,11 @@ class Experiment():
 def next_gen(list_expes:List[Experiment],scores:List[float]):
     rank_i = np.argsort(scores)
     rank_i = np.flip(rank_i)[:len(list_expes)//2]
+    print(rank_i)
     new_expes = []
     for best_i in rank_i:
-        new_expes.append(list_expes[best_i].clone(0.99))
-        new_expes.append(list_expes[best_i].clone(0.99))
+        new_expes.append(list_expes[best_i].clone(0.50))
+        new_expes.append(list_expes[best_i].clone(0.50))
     return new_expes
 
 
@@ -145,12 +146,13 @@ def make_expe_and_log(expe:Experiment):
         M = bc.create_model(mots,expe.label,bc.make_weights(expe.weight_id,mots))
         epoch_done = 0
         # A noter il FAUT que l'epoch soit un multiple de 10
-        for i in range(50,expe.epochs+50,50):
+        for i in range(100,expe.epochs+100,100):
             M = bc.train_model(M,50,dataset_name)
             epoch_done += 50
             model_bytes = db.give_raw_bytes_model(M)
+            model_specs_bytes = db.give_raw_bytes_model_specs(M)
             print("saving...")
-            db.add_entry_models(expe.id_lang,the_id_dataset,"no_specific_name",epoch_done,expe.weight_id,model_bytes)
+            db.add_entry_models(expe.id_lang,the_id_dataset,"no_specific_name",epoch_done,expe.weight_id,model_bytes,model_specs_bytes)
         the_id_model = get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)[0][0]
     else:
         print("Model found, extracting...")
@@ -158,6 +160,8 @@ def make_expe_and_log(expe:Experiment):
         M = db.load_model(the_id_model)
     
     F1 = bc.test_model(M,expe.label,dataset_name)
+    if len(ids_models) == 0:
+        db.update_model_score(the_id_model,np.mean([x[-1] for x in F1]))
     the_id_auto = -1
     A = None
     ids_autos = get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)
@@ -175,6 +179,8 @@ def make_expe_and_log(expe:Experiment):
     
     init_st = A.find_initial_state()
     F2 = bc.test_automate(A,M,infos,mots,expe.label,init_st,dataset_name)
+    if len(ids_autos) == 0:
+        db.update_auto_score(the_id_auto,np.mean([x[-1] for x in F2]))
     return F1, F2
         
 
@@ -182,6 +188,16 @@ def make_expe_and_log(expe:Experiment):
     
     
     
+def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
+    pool = [Experiment(id_language) for _ in range(nb_tested)]
+    scores = []
+    for i in range(generations):
+        for e in pool:
+            F1_m,F1_a = make_expe_and_log(e)
+            F2_1_mean = np.mean([x[-1] for x in F1_a])
+            scores.append(F2_1_mean)
+        pool = next_gen(pool,scores)
+        scores = []
 
     
 
@@ -191,6 +207,23 @@ def make_expe_and_log(expe:Experiment):
 
 if __name__ == "__main__":
     db.setup_db()
-    rng.seed(67)
-    E = Experiment(1)
-    make_expe_and_log(E)
+    while True:
+        curr = db.get_cursor()
+        curr.execute("SELECT id FROM Languages;")
+        ids = curr.fetchall()
+        next_id = -1
+        if len(ids) == 0:
+            next_id = 1
+        else:
+            next_id = ids.sort()[-1][0] +1
+
+        auto,finals,infos = bc.create_first_auto("ml",len_words=5,nb_words=4)
+        by = db.give_raw_bytes_language(auto,finals,infos)
+        db.add_entry_lang(
+            "no_specific_name",
+            len(infos["alphabet"]),
+            len(infos["mots"]),
+            len(infos["mots"][0]),
+            len(auto.states),infos["reset_char"] is None,
+            by)
+        genetic_algorithm(next_id,10,10)
