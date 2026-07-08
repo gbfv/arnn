@@ -220,6 +220,49 @@ def update_auto_score(id_auto:int,score:float):
     DB.commit()
     
 
+def get_ids_dataset(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_test):
+    curr = db.get_cursor()
+    curr.execute("""SELECT id FROM Datasets WHERE 
+        lang = ? AND
+        label = ? AND
+        nb_train = ? AND
+        len_train = ? AND
+
+        nb_val = ? AND
+        len_val = ? AND
+
+        nb_test = ? AND
+        len_test = ?
+        """,(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_test))
+    data = curr.fetchall()
+    return data
+
+def get_ids_models(lang,dataset,epochs,weights):
+    curr = db.get_cursor()
+    curr.execute("""SELECT id FROM Models WHERE 
+        lang = ? AND
+        dataset = ? AND
+        epochs = ? AND
+        weights = ?
+        """,(lang,dataset,epochs,weights))
+    data = curr.fetchall()
+    return data
+
+
+
+def get_ids_autos(lang,dataset,model,nb_clusters):
+    curr = db.get_cursor()
+    curr.execute("""SELECT id FROM Autos WHERE 
+        lang = ? AND
+        dataset = ? AND
+        model = ? AND
+        nb_clusters = ?
+        """,(lang,dataset,model,nb_clusters))
+    data = curr.fetchall()
+    return data
+
+
+
 if __name__ == "__main__":
     setup_db()
     print(get_data("SELECT * FROM Models;"))

@@ -78,47 +78,6 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
 
 
 
-def get_ids_dataset(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_test):
-    curr = db.get_cursor()
-    curr.execute("""SELECT id FROM Datasets WHERE 
-        lang = ? AND
-        label = ? AND
-        nb_train = ? AND
-        len_train = ? AND
-
-        nb_val = ? AND
-        len_val = ? AND
-
-        nb_test = ? AND
-        len_test = ?
-        """,(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_test))
-    data = curr.fetchall()
-    return data
-
-def get_ids_models(lang,dataset,epochs,weights):
-    curr = db.get_cursor()
-    curr.execute("""SELECT id FROM Models WHERE 
-        lang = ? AND
-        dataset = ? AND
-        epochs = ? AND
-        weights = ?
-        """,(lang,dataset,epochs,weights))
-    data = curr.fetchall()
-    return data
-
-def get_ids_autos(lang,dataset,model,nb_clusters):
-    curr = db.get_cursor()
-    curr.execute("""SELECT id FROM Autos WHERE 
-        lang = ? AND
-        dataset = ? AND
-        model = ? AND
-        nb_clusters = ?
-        """,(lang,dataset,model,nb_clusters))
-    data = curr.fetchall()
-    return data
-
-
-
 
 def make_expe_and_log(expe:Experiment):
     auto,finals,infos = db.load_language(expe.id_lang)
@@ -126,13 +85,13 @@ def make_expe_and_log(expe:Experiment):
     mots = infos["mots"]
     # Get the dataset
     the_id_dataset = -1
-    ids_dataset = get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)
+    ids_dataset = db.get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)
     if len(ids_dataset) == 0:
         print("No dataset found creating it....")
         bc.create_dataset_and_save_it(auto,infos,expe.label,expe.nb_test,expe.nb_train,expe.len_test,expe.len_train,dataset_name)
         d1,d2,d3 = db.capture_datasets()
         db.add_entry_dataset(expe.id_lang,"no_specific_name",expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test,d1,d2,d3)
-        the_id_dataset = get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)[0][0]
+        the_id_dataset = db.get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)[0][0]
     else:
         the_id_dataset = ids_dataset[0][0]
         print(f"Dataset found (id:{the_id_dataset}), extracting...")
@@ -140,7 +99,7 @@ def make_expe_and_log(expe:Experiment):
 
     the_id_model = -1
     M = None
-    ids_models = get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)
+    ids_models = db.get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)
     if len(ids_models) == 0:
         print("No model found, Training....")
         M = bc.create_model(mots,expe.label,bc.make_weights(expe.weight_id,mots))
@@ -153,7 +112,7 @@ def make_expe_and_log(expe:Experiment):
             model_specs_bytes = db.give_raw_bytes_model_specs(M)
             print("saving...")
             db.add_entry_models(expe.id_lang,the_id_dataset,"no_specific_name",epoch_done,expe.weight_id,model_bytes,model_specs_bytes)
-        the_id_model = get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)[0][0]
+        the_id_model = db.get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)[0][0]
     else:
         print("Model found, extracting...")
         the_id_model = ids_models[0][0]
@@ -164,14 +123,14 @@ def make_expe_and_log(expe:Experiment):
         db.update_model_score(the_id_model,np.mean([x[-1] for x in F1]))
     the_id_auto = -1
     A = None
-    ids_autos = get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)
+    ids_autos = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)
     if len(ids_autos) == 0:
         print("No auto found, Creating...")
         A = bc.get_automate_from_model(M,infos,expe.nb_clusters,dataset_name,"pred")
         A.minimize()
         bytes_auto = db.give_raw_bytes_auto(A)
         db.add_entry_auto(expe.id_lang,the_id_dataset,the_id_model,"no_specific_name",-1,expe.nb_clusters,len(A.Q),bytes_auto)
-        the_id_auto = get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)[0][0]
+        the_id_auto = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)[0][0]
     else:
         print("Auto found, extracting....")
         the_id_auto = ids_autos[0][0]
