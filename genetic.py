@@ -60,6 +60,53 @@ class Experiment():
             res.nb_clusters = self.nb_clusters
         return res
 
+    def export_values(self):
+        res = []
+        res.append(self.nb_train)
+        res.append(self.len_train)
+        res.append(self.nb_val)
+        res.append(self.len_val)
+        res.append(self.nb_test)
+        res.append(self.len_test)
+        res.append(self.label)
+        res.append(self.epochs)
+        res.append(self.weight_id)
+        res.append(self.nb_state_discovered)
+        res.append(self.nb_clusters)
+        return res
+    
+    def import_values(self,vals):
+        self.nb_train = vals[0]
+        self.len_train = vals[1]
+        self.nb_val = vals[2]
+        self.len_val = vals[3]
+        self.nb_test = vals[4]
+        self.len_test = vals[5]
+        self.label = vals[6]
+        self.epochs = vals[7]
+        self.weight_id = vals[8]
+        self.nb_state_discovered = vals[9]
+        self.nb_clusters = vals[10]
+
+    def reproduce(self,other):
+        self_vals = self.export_values()
+        other_values = other.export_values()
+        new_experience_1_vals = []
+        new_experience_2_vals = []
+        for i in range(len(self_vals)):
+            choice = rng.choice(["self","other"])
+            if choice == "self":
+                new_experience_1_vals.append(self_vals[i])
+                new_experience_2_vals.append(other_values[i])
+            else:
+                new_experience_1_vals.append(other_values[i])
+                new_experience_2_vals.append(self_vals[i])
+        E1 = Experiment(self.id_lang)
+        E2 = Experiment(self.id_lang)
+        E1.import_values(new_experience_1_vals)
+        E2.import_values(new_experience_2_vals)
+        return E1,E2
+
     def __str__(self):
         #Un peu de magie noire
         all_vars = [x for x in dir(self) if not x.startswith("__")]
@@ -165,8 +212,9 @@ def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
 
 
 if __name__ == "__main__":
+    exit(0)
     db.setup_db()
-    while True:
+    while True: 
         curr = db.get_cursor()
         curr.execute("SELECT id FROM Languages;")
         ids = curr.fetchall()
