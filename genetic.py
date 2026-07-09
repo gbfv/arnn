@@ -51,7 +51,7 @@ class Experiment():
             res.label = self.label
 
         if rng.random() > chance:
-            res.poids = self.poids
+            res.weight_id = self.weight_id
         
         if rng.random() > chance:
             res.nb_state_discovered = self.nb_state_discovered
@@ -116,10 +116,18 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     rank_i = np.argsort(scores)
     rank_i = np.flip(rank_i)[:len(list_expes)//2]
     print(rank_i)
+    
     new_expes = []
+    #First half duplicate themselfs
     for best_i in rank_i:
         new_expes.append(list_expes[best_i].clone(0.50))
-        new_expes.append(list_expes[best_i].clone(0.50))
+    
+    #First quarter reproduce
+    rank_i = rank_i[:len(rank_i) // 2+1]
+    for i in range(1,len(rank_i)):
+        E1,E2 = list_expes[rank_i[0]].reproduce(list_expes[rank_i[i]])
+        new_expes.append(E1)
+        new_expes.append(E2)
     return new_expes
 
 
@@ -212,7 +220,6 @@ def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
 
 
 if __name__ == "__main__":
-    exit(0)
     db.setup_db()
     while True: 
         curr = db.get_cursor()

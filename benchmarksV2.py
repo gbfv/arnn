@@ -179,11 +179,12 @@ def test_model(model: TOY_GRU, method: str, dataset_name: str):
     return model.give_f1_scores(y_true, predicted)
 
 
-def get_automate_from_model(model: TOY_GRU, info_automate, nb_states: int, dataset_name: str, init_method: str) -> TOY_Automaton:
+def get_automate_from_model(model: TOY_GRU, info_automate, nb_states: int, dataset_name: str, init_method: str,final=set()) -> TOY_Automaton:
     print("Création automate (peut être long...)")
+    final = {int(f) for f in final} if final is not None else None
     X, _ = toy_example.parse_log_file(f"{dataset_name}_test.txt")
     alphabet = list(range(len(info_automate["alphabet"])))
-    return TOY_Automaton(model, alphabet, nb_states, X, init_build=init_method)
+    return TOY_Automaton(model, alphabet, nb_states, X, init_build=init_method,final=final)
 
 
 def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode, init, dataset_name):
@@ -198,15 +199,15 @@ def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode
     print(len(predicted), len(yt))
     model.scores(yt, predicted)
     res = model.give_f1_scores(yt, predicted)
-    if methode == "multi-classe":
-        f1_macro, _ = res
-        print(f"F1-Score : {f1_macro}")
-    elif methode == "binaire":
-        prec, recall, f1 = res
-        print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
-    motifs_length = max(len(motif) for motif in info_automate["mots"])
-    toy_example.find_motifs(
-        A, info_automate, motifs_length, methode, init_state=init)
+    #if methode == "multi-classe":
+    #    f1_macro, _ = res
+    #    print(f"F1-Score : {f1_macro}")
+    #elif methode == "binaire":
+    #    prec, recall, f1 = res
+    #    print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
+    #motifs_length = max(len(motif) for motif in info_automate["mots"])
+    #toy_example.find_motifs(
+    #    A, info_automate, motifs_length, methode, init_state=init)
     return res
 
 
@@ -372,7 +373,7 @@ def trash_func():
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
     M = create_model(mots, "multi-label", weights)
-    train_model(M, 500, dataset_name)
+    M = train_model(M, 500, dataset_name)
     F1s = test_model(M, "multi-label", dataset_name)
     A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
     A.minimize()
@@ -500,19 +501,24 @@ def stress_test_dataset():
     l = [x for x in range(NB_IN_TEST+1)]
     random.shuffle(l)
     for id_auto in l:
-        automate, final_states, info_automate = get_fsm_by_id(id_auto)
+        automate, final_states, info_automate = get_fsm_by_id(121)
         dataset_name = "test/el_grand_test"
         for i in range(20):
-            create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 400, dataset_name)
+            create_dataset_and_save_it(automate, info_automate, "multi-label", 1000, 1000, 400, 40, dataset_name)
             mots = info_automate["mots"]
             weights = make_weights(0,mots)
             M = create_model(mots, "multi-label", weights)
-            train_model(M, 500, dataset_name)
+            M = train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
+
             A = get_automate_from_model(M, info_automate, int(len(automate.states)*2.5), dataset_name, "pred")
-            A.minimize()
+            F2 = test_automate(A, M, info_automate, mots,"multi-label", -1, dataset_name)
+
+
             init_state = A.find_initial_state()
-            F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
+            A.minimize()
+
+
             B = light_automaton(automate)
             iso = is_isomorphic(B, A)[0]
             mean_f1 = np.mean([x[-1] for x in F1])
@@ -533,7 +539,7 @@ def len_words_test():
             mots = info_automate["mots"]
             weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
             M = create_model(mots, "multi-label", weights)
-            train_model(M, 500, dataset_name)
+            M = train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
             A = get_automate_from_model(M, info_automate,int(len(automate.states)*2.5), dataset_name, "pred")
             A.minimize()
@@ -544,4 +550,4 @@ def len_words_test():
             add_log("len_words", "len_words.log", f"ID:{id_auto},LEN_WORDS:{k},F1_M:{mean_f1},F1_A:{mean_f2}")
 
 if __name__ == "__main__":
-    test_of_tests()
+    stress_test_dataset()
