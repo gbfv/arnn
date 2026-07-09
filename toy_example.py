@@ -226,7 +226,6 @@ def test_automaton(automaton_name, model, prefix, method, validation=False, path
     else:
         raise FileNotFoundError(f"Automaton file {auto_path} not found. Please build the automaton before testing.")
     print(f"Testing automaton {automaton_name}...\n")
-
     if validation:
         X, Y = parse_log_file(f"{path}/{prefix}_{method}_val.txt")
     else:

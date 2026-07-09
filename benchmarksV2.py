@@ -212,7 +212,7 @@ def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode
 
 
 def test_of_tests():
-    automate, final_states, info_automate = get_fsm_by_id(5) # el_automate
+    automate, final_states, info_automate = get_fsm_by_id(121) # el_automate
     show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"
     create_dataset_and_save_it(
@@ -222,12 +222,11 @@ def test_of_tests():
     M = create_model(mots, "multi-label", weights)
     train_model(M, 500, dataset_name)
     F1 = test_model(M, "multi-label", dataset_name)
-    print(F1)
     A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+    F2 = test_automate(A, M, info_automate, mots,
+                       "multi-label", -1, dataset_name)
     A.minimize()
     init_state = A.find_initial_state()
-    F2 = test_automate(A, M, info_automate, mots,
-                       "multi-label", init_state, dataset_name)
     B = light_automaton(automate)
     print(is_isomorphic(B, A)[0])
     print(F2)
@@ -511,7 +510,7 @@ def stress_test_dataset():
             M = train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
 
-            A = get_automate_from_model(M, info_automate, int(len(automate.states)*2.5), dataset_name, "pred")
+            A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
             F2 = test_automate(A, M, info_automate, mots,"multi-label", -1, dataset_name)
 
 
@@ -550,4 +549,4 @@ def len_words_test():
             add_log("len_words", "len_words.log", f"ID:{id_auto},LEN_WORDS:{k},F1_M:{mean_f1},F1_A:{mean_f2}")
 
 if __name__ == "__main__":
-    stress_test_dataset()
+    test_of_tests()
