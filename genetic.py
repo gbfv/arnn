@@ -11,7 +11,7 @@ class Experiment():
     def __init__(self,id_lang):
         self.id_lang = id_lang
         self.nb_train = rng.randrange(50,2000,100)
-        self.len_train = rng.randrange(50,700,20)
+        self.len_train = 50#rng.randrange(50,700,20)
 
         self.nb_val = rng.randrange(50,2000,100)
         self.len_val = rng.randrange(50,700,20)
@@ -20,7 +20,7 @@ class Experiment():
         self.len_test = rng.randrange(50,700,20)
 
         self.label = rng.choice(["multi-label"])
-        self.epochs = 1000
+        self.epochs = 500
 
         self.weight_id = rng.randint(0,3)
 
@@ -161,8 +161,8 @@ def make_expe_and_log(expe:Experiment):
         epoch_done = 0
         # A noter il FAUT que l'epoch soit un multiple de 10
         for i in range(100,expe.epochs+100,100):
-            M = bc.train_model(M,50,dataset_name)
-            epoch_done += 50
+            M = bc.train_model(M,100,dataset_name)
+            epoch_done += 100
             model_bytes = db.give_raw_bytes_model(M)
             model_specs_bytes = db.give_raw_bytes_model_specs(M)
             print("saving...")
@@ -223,10 +223,12 @@ if __name__ == "__main__":
         curr.execute("SELECT id FROM Languages;")
         ids = curr.fetchall()
         next_id = -1
+        print(ids)
         if len(ids) == 0:
             next_id = 1
         else:
-            next_id = ids.sort()[-1][0] +1
+            ids.sort()
+            next_id = ids[-1][0] +1
 
         auto,finals,infos = bc.create_first_auto("ml",len_words=5,nb_words=4)
         by = db.give_raw_bytes_language(auto,finals,infos)
