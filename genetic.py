@@ -182,7 +182,6 @@ def make_expe_and_log(expe:Experiment):
     if len(ids_autos) == 0:
         print("No auto found, Creating...")
         A = bc.get_automate_from_model(M,infos,expe.nb_clusters,dataset_name,"pred")
-        A.minimize()
         bytes_auto = db.give_raw_bytes_auto(A)
         db.add_entry_auto(expe.id_lang,the_id_dataset,the_id_model,"no_specific_name",-1,expe.nb_clusters,len(A.Q),bytes_auto)
         the_id_auto = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)[0][0]
@@ -190,9 +189,7 @@ def make_expe_and_log(expe:Experiment):
         print("Auto found, extracting....")
         the_id_auto = ids_autos[0][0]
         A = db.load_auto_from_db(the_id_auto)
-    
-    init_st = A.find_initial_state()
-    F2 = bc.test_automate(A,M,infos,mots,expe.label,init_st,dataset_name)
+    F2 = bc.test_automate(A,M,infos,mots,expe.label,-1,dataset_name)
     if len(ids_autos) == 0:
         db.update_auto_score(the_id_auto,np.mean([x[-1] for x in F2]))
     return F1, F2

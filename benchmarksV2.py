@@ -220,7 +220,7 @@ def test_of_tests():
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
     M = create_model(mots, "multi-label", weights)
-    train_model(M, 500, dataset_name)
+    M = train_model(M, 500, dataset_name)
     F1 = test_model(M, "multi-label", dataset_name)
     A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
     F2 = test_automate(A, M, info_automate, mots,
@@ -255,14 +255,14 @@ def best_method_init():
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
     M = create_model(mots, "multi-label", weights)
-    train_model(M, 500, dataset_name)
+    M = train_model(M, 500, dataset_name)
     options = ["brute", "pred", "voteF", "voteQ", "find"]
     for o in options:
         A = get_automate_from_model(M, info_automate, 100, dataset_name, o)
+        F2 = test_automate(A, M, info_automate, mots,
+                           "multi-label", -1, dataset_name)
         A.minimize()
         init_st = A.find_initial_state()
-        F2 = test_automate(A, M, info_automate, mots,
-                           "multi-label", init_st, dataset_name)
         B = light_automaton(automate)
         print(np.mean([x[-1] for x in F2]))
         print(is_isomorphic(B, A)[0])
@@ -279,14 +279,14 @@ def gradual_epoch_loss_test():
     B = light_automaton(automate)
     M = create_model(mots, "multi-label", weights)
     for i in range(50):
-        train_model(M, 25, dataset_name)
+        M = train_model(M, 25, dataset_name)
         F1s = test_model(M, dataset_name)
         A = get_automate_from_model(
             M, info_automate, 100, dataset_name, "pred")
+        F2s = test_automate(A, M, info_automate, mots,
+                            "multi-label", -1, dataset_name)
         A.minimize()
         ini = A.find_initial_state()
-        F2s = test_automate(A, M, info_automate, mots,
-                            "multi-label", ini, dataset_name)
         add_log("grad_ep", "gradual_ep_model.log", f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F1s])))
         add_log("grad_ep", "gradual_ep_auto.log", f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F2s]))+",ISO:"+str(is_isomorphic(B, A)[0]))
 
@@ -335,14 +335,14 @@ def gradual_epoch_loss_testV2():
         B = light_automaton(automate)
         M = create_model(mots, "multi-label", weights)
         for i in range(1):
-            train_model(M, 25, dataset_name)
+            M = train_model(M, 25, dataset_name)
             F1s = test_model(M, "multi-label", dataset_name)
             A = get_automate_from_model(
                 M, info_automate, 100, dataset_name, "pred")
+            F2s = test_automate(A, M, info_automate, mots,
+                                "multi-label", -1, dataset_name)
             A.minimize()
             ini = A.find_initial_state()
-            F2s = test_automate(A, M, info_automate, mots,
-                                "multi-label", ini, dataset_name)
             add_log("grad_ep", "gradual_ep_model.log", f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F1s])))
             add_log("grad_ep", "gradual_ep_auto.log", f"EPOCH:{(i+1)*25}" + ",MODEL:"+str(np.mean([x[-1] for x in F2s]))+",ISO:"+str(is_isomorphic(B, A)[0]))
 
@@ -391,17 +391,17 @@ def the_number_of_states_needed():
         mots = info_automate["mots"]
         weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
         M = create_model(mots, "multi-label", weights)
-        train_model(M, 400, dataset_name)
+        M = train_model(M, 400, dataset_name)
         nb_states = int(len(automate.states) / 2)
         step = int(nb_states)
         B = light_automaton(automate)
         for i in range(20):
             A = get_automate_from_model(
                 M, info_automate, nb_states, dataset_name, "pred")
+            F2s = test_automate(
+                A, M, info_automate, mots, "multi-label", -1, dataset_name)
             A.minimize()
             ini = A.find_initial_state()
-            F1s = F2s = test_automate(
-                A, M, info_automate, mots, "multi-label", ini, dataset_name)
             mean_f1 = np.mean([x[-1] for x in F1s])
             add_log("nb_st_test", f"nb_state_id{id_auto}", f"STATES:{nb_states},F1:{mean_f1},SAME:{ressemblance_score(A, B)}")
             nb_states += step
@@ -420,7 +420,7 @@ def nuage_de_points():
             mots = info_automate["mots"]
             weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
             M = create_model(mots, "multi-label", weights)
-            train_model(M, 500, dataset_name)
+            M = train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
             mean_f1 = np.mean([x[-1] for x in F1])
             add_log("nuage", "nuage_log.log", f"ID:{id_auto},NB_WORDS:{k},F1:{mean_f1}")
@@ -436,12 +436,12 @@ def perf_by_fsm():
         mots = info_automate["mots"]
         weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
         M = create_model(mots, "multi-label", weights)
-        train_model(M, 500, dataset_name)
+        M = train_model(M, 500, dataset_name)
         F1 = test_model(M, "multi-label", dataset_name)
         A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+        F2 = test_automate(A, M, info_automate, mots,"multi-label", -1, dataset_name)
         A.minimize()
         init_state = A.find_initial_state()
-        F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
         B = light_automaton(automate)
         iso = is_isomorphic(B, A)[0]
         mean_f1 = np.mean([x[-1] for x in F1])
@@ -480,12 +480,12 @@ def test_weights():
         for weight_method in range(8):
             weights = make_weights(weight_method,mots)
             M = create_model(mots, "multi-label", weights)
-            train_model(M, 500, dataset_name)
+            M = train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
             A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
+            F2 = test_automate(A, M, info_automate, mots,"multi-label", -1, dataset_name)
             A.minimize()
             init_state = A.find_initial_state()
-            F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
             B = light_automaton(automate)
             iso = is_isomorphic(B, A)[0]
             mean_f1 = np.mean([x[-1] for x in F1])
@@ -541,9 +541,9 @@ def len_words_test():
             M = train_model(M, 500, dataset_name)
             F1 = test_model(M, "multi-label", dataset_name)
             A = get_automate_from_model(M, info_automate,int(len(automate.states)*2.5), dataset_name, "pred")
+            F2 = test_automate(A, M, info_automate, mots,"multi-label", -1, dataset_name)
             A.minimize()
             init_state = A.find_initial_state()
-            F2 = test_automate(A, M, info_automate, mots,"multi-label", init_state, dataset_name)
             mean_f1 = np.mean([x[-1] for x in F1])
             mean_f2 = np.mean([x[-1] for x in F2])
             add_log("len_words", "len_words.log", f"ID:{id_auto},LEN_WORDS:{k},F1_M:{mean_f1},F1_A:{mean_f2}")
