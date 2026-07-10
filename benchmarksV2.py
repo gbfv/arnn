@@ -131,8 +131,12 @@ def create_dataset_and_save_it(automate, info_automate, methode, nb_words_test: 
     toy_example.create_log(words, labels, f"{dataset_name}_val.txt")
 
 
-def create_model(mots, method: str, weights) -> TOY_GRU:
-    num_classes = max([len(word) for word in mots]) + 1
+def create_model(mots, method: str, weights,automate_if_state=None) -> TOY_GRU:
+    num_classes = -1
+    if method == "state":
+        num_classes = len(automate_if_state.states)
+    else:
+        num_classes = max([len(word) for word in mots]) + 1
     # state est une version de multi-classe
     label_method = "multi-classe" if method == "state" else method
     return TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(toy_example.DEVICE)
@@ -210,26 +214,27 @@ def test_automate(A: TOY_Automaton, model: TOY_GRU, info_automate, mots, methode
     #    A, info_automate, motifs_length, methode, init_state=init)
     return res
 
+#===========================================================
 
 def test_of_tests():
     automate, final_states, info_automate = get_fsm_by_id(121) # el_automate
     show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"
     create_dataset_and_save_it(
-        automate, info_automate, "multi-label", 1000, 1000, 400, 40, dataset_name)
+        automate, info_automate, "multi-classe", 1000, 1000, 400, 40, dataset_name)
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
-    M = create_model(mots, "multi-label", weights)
+    M = create_model(mots, "multi-classe", weights,automate)
     M = train_model(M, 500, dataset_name)
-    F1 = test_model(M, "multi-label", dataset_name)
+    F1 = test_model(M, "multi-classe", dataset_name)
     A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
     F2 = test_automate(A, M, info_automate, mots,
-                       "multi-label", -1, dataset_name)
+                       "multi-classe", -1, dataset_name)
     A.minimize()
     init_state = A.find_initial_state()
     B = light_automaton(automate)
     print(is_isomorphic(B, A)[0])
-    print(F2)
+    print(F1,F2)
 
 
 def bug_hunt():
