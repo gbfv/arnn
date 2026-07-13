@@ -185,5 +185,6 @@ def len_graph(filename):
     
     plt.show()
 
+import sys
 if __name__ == "__main__":
-    stress_test_graph("benchmark_data/perf_test_2/logs/default/stress.log")
+    stress_test_graph(sys.argv[1])

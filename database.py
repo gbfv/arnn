@@ -73,21 +73,33 @@ def setup_db():
     DB.commit()
     curr.close()
 
-def get_raw_bytes(filename):
-    return open(filename,"rb").read()
 
-def save_raw_bytes(data,filename):
-    fd = open(filename,"wb")
-    fd.write(data)
-    fd.close()
-
-def add_entry_lang(name,size_sigma,nb_words,len_words,size_auto,reset,data):
+def add_entry_lang(
+    name,
+    size_sigma,
+    nb_words,
+    len_words,
+    size_auto,
+    reset,
+    data):
     global DB
     curr = get_cursor()
     curr.execute("INSERT INTO Languages (name,size_sigma,nb_words,len_words,size_auto,reset,data) VALUES (?,?,?,?,?,?,?);",(name,size_sigma,nb_words,len_words,size_auto,reset,data))
     DB.commit()
 
-def add_entry_dataset(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test):
+def add_entry_dataset(
+    lang,
+    name,
+    label,
+    nb_train,
+    len_train,
+    nb_val,
+    len_val,
+    nb_test,
+    len_test,
+    data_train,
+    data_val,
+    data_test):
     global DB
     curr = get_cursor()
     curr.execute("INSERT INTO Datasets (lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?);",(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test))

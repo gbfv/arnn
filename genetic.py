@@ -11,7 +11,7 @@ class Experiment():
     def __init__(self,id_lang):
         self.id_lang = id_lang
         self.nb_train = rng.randrange(50,2000,100)
-        self.len_train = 50#rng.randrange(50,700,20)
+        self.len_train = rng.randrange(50,700,20)
 
         self.nb_val = rng.randrange(50,2000,100)
         self.len_val = rng.randrange(50,700,20)
