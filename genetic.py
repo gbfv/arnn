@@ -19,7 +19,7 @@ class Experiment():
         self.nb_test = rng.randrange(50,2000,100)
         self.len_test = rng.randrange(50,700,20)
 
-        self.label = rng.choice(["multi-label"])
+        self.label = rng.choice(["multi-label","multi-classe","state"])
         self.epochs = 500
 
         self.weight_id = rng.randint(0,3)
@@ -120,7 +120,7 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     new_expes = []
     #First half duplicate themselfs
     for best_i in rank_i:
-        new_expes.append(list_expes[best_i].clone(0.50))
+        new_expes.append(list_expes[best_i].clone(0.2))
     
     #First quarter reproduce
     rank_i = rank_i[:len(rank_i) // 2+1]

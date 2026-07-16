@@ -221,15 +221,15 @@ def test_of_tests():
     show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"
     create_dataset_and_save_it(
-        automate, info_automate, "multi-classe", 1000, 1000, 400, 40, dataset_name)
+        automate, info_automate, "state", 1000, 1000, 400, 40, dataset_name)
     mots = info_automate["mots"]
     weights = [[1.0]+[16.0]*(len(mot)) for mot in mots]
-    M = create_model(mots, "multi-classe", weights,automate)
+    M = create_model(mots, "state", weights,automate)
     M = train_model(M, 500, dataset_name)
-    F1 = test_model(M, "multi-classe", dataset_name)
+    F1 = test_model(M, "state", dataset_name)
     A = get_automate_from_model(M, info_automate, 100, dataset_name, "pred")
     F2 = test_automate(A, M, info_automate, mots,
-                       "multi-classe", -1, dataset_name)
+                       "state", -1, dataset_name)
     A.minimize()
     init_state = A.find_initial_state()
     B = light_automaton(automate)

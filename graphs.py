@@ -187,4 +187,4 @@ def len_graph(filename):
 
 import sys
 if __name__ == "__main__":
-    stress_test_graph(sys.argv[1])
+    len_graph(sys.argv[1])
