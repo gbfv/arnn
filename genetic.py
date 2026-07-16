@@ -1,7 +1,7 @@
 import random as rng
 from typing import List
 import pickle
-import benchmarksV2 as bc
+import utils_test as utl
 
 import database as db
 import numpy as np
@@ -143,7 +143,7 @@ def make_expe_and_log(expe:Experiment):
     ids_dataset = db.get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)
     if len(ids_dataset) == 0:
         print("No dataset found creating it....")
-        bc.create_dataset_and_save_it(auto,infos,expe.label,expe.nb_test,expe.nb_train,expe.len_test,expe.len_train,dataset_name)
+        utl.create_dataset_and_save_it(auto,infos,expe.label,expe.nb_test,expe.nb_train,expe.len_test,expe.len_train,dataset_name)
         d1,d2,d3 = db.capture_datasets()
         db.add_entry_dataset(expe.id_lang,"no_specific_name",expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test,d1,d2,d3)
         the_id_dataset = db.get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)[0][0]
@@ -157,11 +157,11 @@ def make_expe_and_log(expe:Experiment):
     ids_models = db.get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)
     if len(ids_models) == 0:
         print("No model found, Training....")
-        M = bc.create_model(mots,expe.label,bc.make_weights(expe.weight_id,mots))
+        M = utl.create_model(mots,expe.label,utl.make_weights(expe.weight_id,mots))
         epoch_done = 0
         # A noter il FAUT que l'epoch soit un multiple de 10
         for i in range(100,expe.epochs+100,100):
-            M = bc.train_model(M,100,dataset_name)
+            M = utl.train_model(M,100,dataset_name)
             epoch_done += 100
             model_bytes = db.give_raw_bytes_model(M)
             model_specs_bytes = db.give_raw_bytes_model_specs(M)
@@ -173,7 +173,7 @@ def make_expe_and_log(expe:Experiment):
         the_id_model = ids_models[0][0]
         M = db.load_model(the_id_model)
     
-    F1 = bc.test_model(M,expe.label,dataset_name)
+    F1 = utl.test_model(M,expe.label,dataset_name)
     if len(ids_models) == 0:
         db.update_model_score(the_id_model,np.mean([x[-1] for x in F1]))
     the_id_auto = -1
@@ -181,7 +181,7 @@ def make_expe_and_log(expe:Experiment):
     ids_autos = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)
     if len(ids_autos) == 0:
         print("No auto found, Creating...")
-        A = bc.get_automate_from_model(M,infos,expe.nb_clusters,dataset_name,"pred")
+        A = utl.get_automate_from_model(M,infos,expe.nb_clusters,dataset_name,"pred")
         bytes_auto = db.give_raw_bytes_auto(A)
         db.add_entry_auto(expe.id_lang,the_id_dataset,the_id_model,"no_specific_name",-1,expe.nb_clusters,len(A.Q),bytes_auto)
         the_id_auto = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)[0][0]
@@ -189,7 +189,7 @@ def make_expe_and_log(expe:Experiment):
         print("Auto found, extracting....")
         the_id_auto = ids_autos[0][0]
         A = db.load_auto_from_db(the_id_auto)
-    F2 = bc.test_automate(A,M,infos,mots,expe.label,-1,dataset_name)
+    F2 = utl.test_automate(A,M,infos,mots,expe.label,-1,dataset_name)
     if len(ids_autos) == 0:
         db.update_auto_score(the_id_auto,np.mean([x[-1] for x in F2]))
     return F1, F2
@@ -230,7 +230,7 @@ if __name__ == "__main__":
             ids.sort()
             next_id = ids[-1][0] +1
 
-        auto,finals,infos = bc.create_first_auto("ml",len_words=5,nb_words=4)
+        auto,finals,infos = utl.create_first_auto("ml",len_words=5,nb_words=4)
         by = db.give_raw_bytes_language(auto,finals,infos)
         db.add_entry_lang(
             "no_specific_name",
