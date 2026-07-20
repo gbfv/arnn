@@ -69,7 +69,6 @@ def setup_db():
         dataset INTEGER,
         model INTEGER,
         name STRING,
-        nb_explore INTEGER,
         nb_clusters INTEGER,
         nb_etats INTEGER,
         F1_mean FLOAT,
@@ -139,7 +138,6 @@ def add_entry_auto(
     dataset ,
     model ,
     name ,
-    nb_explore ,
     nb_clusters ,
     nb_etats ,
     data ):
@@ -148,7 +146,7 @@ def add_entry_auto(
     """
     global DB
     curr = get_cursor()
-    curr.execute("INSERT INTO Autos (lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?,?);",(lang ,dataset ,model ,name ,nb_explore ,nb_clusters ,nb_etats ,data))
+    curr.execute("INSERT INTO Autos (lang ,dataset ,model ,name  ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?);",(lang ,dataset ,model ,name ,nb_clusters ,nb_etats ,data))
     DB.commit()
 
 

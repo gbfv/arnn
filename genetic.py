@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 class Experiment():
-    def __init__(self,id_lang):
+    def __init__(self,id_lang,label):
         self.id_lang = id_lang
         self.nb_train = rng.randrange(50,2000,100)
         self.len_train = 40#rng.randrange(50,700,20)
@@ -19,7 +19,7 @@ class Experiment():
         self.nb_test = rng.randrange(50,2000,100)
         self.len_test = rng.randrange(50,700,20)
 
-        self.label = rng.choice(["multi-label","multi-classe","state"])
+        self.label = label
         self.epochs = 500
 
         self.weight_id = rng.randint(0,3)
@@ -27,7 +27,10 @@ class Experiment():
         self.nb_clusters = rng.randrange(100,800,50)
 
     def clone(self,chance):
-        res = Experiment(self.id_lang)
+        """
+        Clone l'expérience avec pour chaque hyper parmaètre une chance de ne PAS être modifié
+        """
+        res = Experiment(self.id_lang,self.label)
         if rng.random() > chance:
             res.len_train = self.len_train
         
@@ -57,6 +60,9 @@ class Experiment():
         return res
 
     def export_values(self):
+        """
+        Exporte les valeurs
+        """
         res = []
         res.append(self.nb_train)
         res.append(self.len_train)
@@ -71,6 +77,9 @@ class Experiment():
         return res
     
     def import_values(self,vals):
+        """
+        Importe les valeurs
+        """
         self.nb_train = vals[0]
         self.len_train = vals[1]
         self.nb_val = vals[2]
@@ -83,6 +92,13 @@ class Experiment():
         self.nb_clusters = vals[9]
 
     def reproduce(self,other):
+        """
+        Reproduit deux expériences.
+
+        Pour chaque hyperparamètre l'enfant à une chance sur 2 de recevoir celui du parent 1 ou 2
+
+        Renvoie 2 enfants qui sont complémantaires
+        """
         self_vals = self.export_values()
         other_values = other.export_values()
         new_experience_1_vals = []
@@ -108,6 +124,11 @@ class Experiment():
 
 
     def load_or_create_dataset(self,auto,finals,infos):
+        """
+        Charge le dataset demandé et s'il n'existe pas, le crée
+
+        Revoie l'id du dataset
+        """
         dataset_name = "test/db_files"
         mots = infos["mots"]
         # Get the dataset
@@ -126,6 +147,11 @@ class Experiment():
         return the_id_dataset
 
     def load_or_create_model(self,id_dataset,auto,infos_automate):
+        """
+        Charge le modèle demandé et s'il n'existe pas, le crée
+
+        Revoie le modèle, son id, et si il était dans la db avant l'appel de la fonction
+        """
         not_in_db = False
         the_id_model = -1
         dataset_name = "test/db_files"
@@ -153,6 +179,11 @@ class Experiment():
         return M, the_id_model, not_in_db
 
     def load_or_create_autos(self,model,id_model,id_dataset):
+        """
+        Charge l'automate demandé et s'il n'existe pas, le crée
+
+        Revoie l'automate, son id, et si il était dans la db avant l'appel de la fonction
+        """
         not_in_db = False
         the_id_auto = -1
         dataset_name = "test/db_files"
@@ -163,7 +194,7 @@ class Experiment():
             print("No auto found, Creating...")
             A = utl.get_automate_from_model(model,infos,self.nb_clusters,dataset_name,"pred")
             bytes_auto = db.give_raw_bytes_auto(A)
-            db.add_entry_auto(self.id_lang,id_dataset,id_model,"no_specific_name",-1,self.nb_clusters,len(A.Q),bytes_auto)
+            db.add_entry_auto(self.id_lang,id_dataset,id_model,"no_specific_name",self.nb_clusters,len(A.Q),bytes_auto)
             the_id_auto = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)[0][0]
         else:
             print("Auto found, extracting....")
@@ -173,6 +204,11 @@ class Experiment():
 
 
     def make_expe(self):
+        """
+        Fais l'expérience et remmplit la base de donnée
+
+        Renvoie le score F1 du modèle et de l'automate
+        """
         dataset_name = "test/db_files"
         auto,finals,infos = db.load_language(self.id_lang)
         mots = infos["mots"]
@@ -209,14 +245,22 @@ class Experiment():
 
 
 def next_gen(list_expes:List[Experiment],scores:List[float]):
+    """
+    Crée la prochaine génération
+
+    La première moitiée se duplique
+
+    Le premier quart ce reproduit
+
+    Renvoie la liste de nouvelle expériences
+    """
     rank_i = np.argsort(scores)
     rank_i = np.flip(rank_i)[:len(list_expes)//2]
-    print(rank_i)
     
     new_expes = []
     #First half duplicate themselfs
     for best_i in rank_i:
-        new_expes.append(list_expes[best_i].clone(0.2))
+        new_expes.append(list_expes[best_i].clone(0.8))
     
     #First quarter reproduce
     rank_i = rank_i[:len(rank_i) // 2+1]
@@ -229,7 +273,11 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     
     
 def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
-    pool = [Experiment(id_language) for _ in range(nb_tested)]
+    """
+    Applique l'algorithme génétique
+    """
+    label = rng.choice(["multi-label","multi-classe","state"])
+    pool = [Experiment(id_language,label) for _ in range(nb_tested)]
     scores = []
     for i in range(generations):
         for e in pool:
