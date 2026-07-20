@@ -5,3 +5,4 @@ test
 logs
 models
 benchmark_data
+DATABASE.db

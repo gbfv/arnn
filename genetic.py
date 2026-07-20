@@ -11,7 +11,7 @@ class Experiment():
     def __init__(self,id_lang):
         self.id_lang = id_lang
         self.nb_train = rng.randrange(50,2000,100)
-        self.len_train = rng.randrange(50,700,20)
+        self.len_train = 40#rng.randrange(50,700,20)
 
         self.nb_val = rng.randrange(50,2000,100)
         self.len_val = rng.randrange(50,700,20)
@@ -24,7 +24,6 @@ class Experiment():
 
         self.weight_id = rng.randint(0,3)
 
-        self.nb_state_discovered = rng.randrange(10_000,1_000_000,50_000)
         self.nb_clusters = rng.randrange(100,800,50)
 
     def clone(self,chance):
@@ -52,9 +51,6 @@ class Experiment():
 
         if rng.random() > chance:
             res.weight_id = self.weight_id
-        
-        if rng.random() > chance:
-            res.nb_state_discovered = self.nb_state_discovered
             
         if rng.random() > chance:
             res.nb_clusters = self.nb_clusters
@@ -71,7 +67,6 @@ class Experiment():
         res.append(self.label)
         res.append(self.epochs)
         res.append(self.weight_id)
-        res.append(self.nb_state_discovered)
         res.append(self.nb_clusters)
         return res
     
@@ -85,8 +80,7 @@ class Experiment():
         self.label = vals[6]
         self.epochs = vals[7]
         self.weight_id = vals[8]
-        self.nb_state_discovered = vals[9]
-        self.nb_clusters = vals[10]
+        self.nb_clusters = vals[9]
 
     def reproduce(self,other):
         self_vals = self.export_values()
@@ -112,6 +106,108 @@ class Experiment():
         all_vars = [x for x in dir(self) if not x.startswith("__")]
         return "|".join([f"{x}:{getattr(self,x)}" for x in all_vars if not str(getattr(self,x)).startswith("<")])
 
+
+    def load_or_create_dataset(self,auto,finals,infos):
+        dataset_name = "test/db_files"
+        mots = infos["mots"]
+        # Get the dataset
+        the_id_dataset = -1
+        ids_dataset = db.get_ids_dataset(self.id_lang,self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test)
+        if len(ids_dataset) == 0:
+            print("No dataset found creating it....")
+            utl.create_dataset_and_save_it(auto,infos,self.label,self.nb_test,self.nb_train,self.len_test,self.len_train,dataset_name)
+            d1,d2,d3 = db.capture_datasets()
+            db.add_entry_dataset(self.id_lang,"no_specific_name",self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test,d1,d2,d3)
+            the_id_dataset = db.get_ids_dataset(self.id_lang,self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test)[0][0]
+        else:
+            the_id_dataset = ids_dataset[0][0]
+            print(f"Dataset found (id:{the_id_dataset}), extracting...")
+            db.load_datasets_to_file(the_id_dataset)
+        return the_id_dataset
+
+    def load_or_create_model(self,id_dataset,auto,infos_automate):
+        not_in_db = False
+        the_id_model = -1
+        dataset_name = "test/db_files"
+        mots = infos_automate["mots"]
+        M = None
+        ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)
+        if len(ids_models) == 0:
+            print("No model found, Training....")
+            not_in_db = True
+            epoch_done = 0
+            M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto)
+            # A noter il FAUT que l'epoch soit un multiple de 10
+            for i in range(100,self.epochs+100,100):
+                M = utl.train_model(M,100,dataset_name)
+                epoch_done += 100
+                model_bytes = db.give_raw_bytes_model(M)
+                model_specs_bytes = db.give_raw_bytes_model_specs(M)
+                print("saving...")
+                db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",epoch_done,self.weight_id,model_bytes,model_specs_bytes)
+            the_id_model = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)[0][0]
+        else:
+            print("Model found, extracting...")
+            the_id_model = ids_models[0][0]
+            M = db.load_model(the_id_model)
+        return M, the_id_model, not_in_db
+
+    def load_or_create_autos(self,model,id_model,id_dataset):
+        not_in_db = False
+        the_id_auto = -1
+        dataset_name = "test/db_files"
+        A = None
+        ids_autos = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)
+        if len(ids_autos) == 0:
+            not_in_db = True
+            print("No auto found, Creating...")
+            A = utl.get_automate_from_model(model,infos,self.nb_clusters,dataset_name,"pred")
+            bytes_auto = db.give_raw_bytes_auto(A)
+            db.add_entry_auto(self.id_lang,id_dataset,id_model,"no_specific_name",-1,self.nb_clusters,len(A.Q),bytes_auto)
+            the_id_auto = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)[0][0]
+        else:
+            print("Auto found, extracting....")
+            the_id_auto = ids_autos[0][0]
+            A = db.load_auto_from_db(the_id_auto)
+        return A,the_id_auto,not_in_db
+
+
+    def make_expe(self):
+        dataset_name = "test/db_files"
+        auto,finals,infos = db.load_language(self.id_lang)
+        mots = infos["mots"]
+        id_dataset = self.load_or_create_dataset(auto,finals,infos)
+        M, id_model, not_in_db = self.load_or_create_model(id_dataset,auto,infos)
+        F1_model = utl.test_model(M,self.label,dataset_name)
+        F1_model_score = 0
+        print(F1_model)
+        if (not_in_db):
+            match self.label:
+                case "state":
+                    F1_model_score = np.mean(F1_model)
+                case "multi-classe":
+                    F1_model_score = F1_model[-1]
+                case "multi-label":
+                    F1_model_score = np.mean([x[-1] for x in F1_model])
+            db.update_model_score(id_model,F1_model_score)
+        A, the_id_auto, not_in_db = self.load_or_create_autos(M,id_model,id_dataset)
+        F1_auto = utl.test_automate(A,M,infos,mots,self.label,-1,dataset_name)
+        F1_Auto_score = 0
+        if (not_in_db):
+            match self.label:
+                case "state":
+                    F1_Auto_score = np.mean(F1_auto)
+                case "multi-classe":
+                    F1_Auto_score = F1_auto[-1]
+                case "multi-label":
+                    F1_Auto_score = np.mean([x[-1] for x in F1_auto])
+            db.update_auto_score(the_id_auto,F1_Auto_score)
+        return F1_model_score, F1_Auto_score
+
+
+
+
+
 def next_gen(list_expes:List[Experiment],scores:List[float]):
     rank_i = np.argsort(scores)
     rank_i = np.flip(rank_i)[:len(list_expes)//2]
@@ -130,73 +226,6 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
         new_expes.append(E2)
     return new_expes
 
-
-
-
-
-def make_expe_and_log(expe:Experiment):
-    auto,finals,infos = db.load_language(expe.id_lang)
-    dataset_name = "test/db_files"
-    mots = infos["mots"]
-    # Get the dataset
-    the_id_dataset = -1
-    ids_dataset = db.get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)
-    if len(ids_dataset) == 0:
-        print("No dataset found creating it....")
-        utl.create_dataset_and_save_it(auto,infos,expe.label,expe.nb_test,expe.nb_train,expe.len_test,expe.len_train,dataset_name)
-        d1,d2,d3 = db.capture_datasets()
-        db.add_entry_dataset(expe.id_lang,"no_specific_name",expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test,d1,d2,d3)
-        the_id_dataset = db.get_ids_dataset(expe.id_lang,expe.label,expe.nb_train,expe.len_train,expe.nb_val,expe.len_val,expe.nb_test,expe.len_test)[0][0]
-    else:
-        the_id_dataset = ids_dataset[0][0]
-        print(f"Dataset found (id:{the_id_dataset}), extracting...")
-        db.load_datasets_to_file(the_id_dataset)
-
-    the_id_model = -1
-    M = None
-    ids_models = db.get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)
-    if len(ids_models) == 0:
-        print("No model found, Training....")
-        M = utl.create_model(mots,expe.label,utl.make_weights(expe.weight_id,mots))
-        epoch_done = 0
-        # A noter il FAUT que l'epoch soit un multiple de 10
-        for i in range(100,expe.epochs+100,100):
-            M = utl.train_model(M,100,dataset_name)
-            epoch_done += 100
-            model_bytes = db.give_raw_bytes_model(M)
-            model_specs_bytes = db.give_raw_bytes_model_specs(M)
-            print("saving...")
-            db.add_entry_models(expe.id_lang,the_id_dataset,"no_specific_name",epoch_done,expe.weight_id,model_bytes,model_specs_bytes)
-        the_id_model = db.get_ids_models(expe.id_lang,the_id_dataset,expe.epochs,expe.weight_id)[0][0]
-    else:
-        print("Model found, extracting...")
-        the_id_model = ids_models[0][0]
-        M = db.load_model(the_id_model)
-    
-    F1 = utl.test_model(M,expe.label,dataset_name)
-    if len(ids_models) == 0:
-        db.update_model_score(the_id_model,np.mean([x[-1] for x in F1]))
-    the_id_auto = -1
-    A = None
-    ids_autos = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)
-    if len(ids_autos) == 0:
-        print("No auto found, Creating...")
-        A = utl.get_automate_from_model(M,infos,expe.nb_clusters,dataset_name,"pred")
-        bytes_auto = db.give_raw_bytes_auto(A)
-        db.add_entry_auto(expe.id_lang,the_id_dataset,the_id_model,"no_specific_name",-1,expe.nb_clusters,len(A.Q),bytes_auto)
-        the_id_auto = db.get_ids_autos(expe.id_lang,the_id_dataset,the_id_model,expe.nb_clusters)[0][0]
-    else:
-        print("Auto found, extracting....")
-        the_id_auto = ids_autos[0][0]
-        A = db.load_auto_from_db(the_id_auto)
-    F2 = utl.test_automate(A,M,infos,mots,expe.label,-1,dataset_name)
-    if len(ids_autos) == 0:
-        db.update_auto_score(the_id_auto,np.mean([x[-1] for x in F2]))
-    return F1, F2
-        
-
-
-    
     
     
 def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
@@ -204,9 +233,8 @@ def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
     scores = []
     for i in range(generations):
         for e in pool:
-            F1_m,F1_a = make_expe_and_log(e)
-            F2_1_mean = np.mean([x[-1] for x in F1_a])
-            scores.append(F2_1_mean)
+            F1_m,F1_a = e.make_expe()
+            scores.append(F1_a)
         pool = next_gen(pool,scores)
         scores = []
 
