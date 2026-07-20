@@ -7,11 +7,15 @@ import database as db
 import numpy as np
 import os
 
+
+"""
+    L'expérience est une classe qui représente un ensemble d'hyperparamètres
+"""
 class Experiment():
     def __init__(self,id_lang,label):
         self.id_lang = id_lang
         self.nb_train = rng.randrange(50,2000,100)
-        self.len_train = 40#rng.randrange(50,700,20)
+        self.len_train = rng.randrange(50,700,20)
 
         self.nb_val = rng.randrange(50,2000,100)
         self.len_val = rng.randrange(50,700,20)
@@ -48,9 +52,6 @@ class Experiment():
         
         if rng.random() > chance:
             res.nb_test = self.nb_test
-
-        if rng.random() > chance:
-            res.label = self.label
 
         if rng.random() > chance:
             res.weight_id = self.weight_id
@@ -111,8 +112,8 @@ class Experiment():
             else:
                 new_experience_1_vals.append(other_values[i])
                 new_experience_2_vals.append(self_vals[i])
-        E1 = Experiment(self.id_lang)
-        E2 = Experiment(self.id_lang)
+        E1 = Experiment(self.id_lang,self.label)
+        E2 = Experiment(self.id_lang,self.label)
         E1.import_values(new_experience_1_vals)
         E2.import_values(new_experience_2_vals)
         return E1,E2
@@ -123,13 +124,12 @@ class Experiment():
         return "|".join([f"{x}:{getattr(self,x)}" for x in all_vars if not str(getattr(self,x)).startswith("<")])
 
 
-    def load_or_create_dataset(self,auto,finals,infos):
+    def load_or_create_dataset(self,auto,finals,infos,dataset_name):
         """
         Charge le dataset demandé et s'il n'existe pas, le crée
 
         Revoie l'id du dataset
         """
-        dataset_name = "test/db_files"
         mots = infos["mots"]
         # Get the dataset
         the_id_dataset = -1
@@ -146,7 +146,7 @@ class Experiment():
             db.load_datasets_to_file(the_id_dataset)
         return the_id_dataset
 
-    def load_or_create_model(self,id_dataset,auto,infos_automate):
+    def load_or_create_model(self,id_dataset,auto,infos_automate,dataset_name):
         """
         Charge le modèle demandé et s'il n'existe pas, le crée
 
@@ -154,7 +154,6 @@ class Experiment():
         """
         not_in_db = False
         the_id_model = -1
-        dataset_name = "test/db_files"
         mots = infos_automate["mots"]
         M = None
         ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)
@@ -163,7 +162,7 @@ class Experiment():
             not_in_db = True
             epoch_done = 0
             M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto)
-            # A noter il FAUT que l'epoch soit un multiple de 10
+            # A noter il FAUT que l'epoch soit un multiple de 100
             for i in range(100,self.epochs+100,100):
                 M = utl.train_model(M,100,dataset_name)
                 epoch_done += 100
@@ -178,7 +177,7 @@ class Experiment():
             M = db.load_model(the_id_model)
         return M, the_id_model, not_in_db
 
-    def load_or_create_autos(self,model,id_model,id_dataset):
+    def load_or_create_autos(self,model,id_model,id_dataset,dataset_name):
         """
         Charge l'automate demandé et s'il n'existe pas, le crée
 
@@ -186,7 +185,6 @@ class Experiment():
         """
         not_in_db = False
         the_id_auto = -1
-        dataset_name = "test/db_files"
         A = None
         ids_autos = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)
         if len(ids_autos) == 0:
@@ -209,11 +207,11 @@ class Experiment():
 
         Renvoie le score F1 du modèle et de l'automate
         """
-        dataset_name = "test/db_files"
+        dataset_name = "test/" + "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
         auto,finals,infos = db.load_language(self.id_lang)
         mots = infos["mots"]
-        id_dataset = self.load_or_create_dataset(auto,finals,infos)
-        M, id_model, not_in_db = self.load_or_create_model(id_dataset,auto,infos)
+        id_dataset = self.load_or_create_dataset(auto,finals,infos,dataset_name)
+        M, id_model, not_in_db = self.load_or_create_model(id_dataset,auto,infos,dataset_name)
         F1_model = utl.test_model(M,self.label,dataset_name)
         F1_model_score = 0
         print(F1_model)
@@ -226,7 +224,7 @@ class Experiment():
                 case "multi-label":
                     F1_model_score = np.mean([x[-1] for x in F1_model])
             db.update_model_score(id_model,F1_model_score)
-        A, the_id_auto, not_in_db = self.load_or_create_autos(M,id_model,id_dataset)
+        A, the_id_auto, not_in_db = self.load_or_create_autos(M,id_model,id_dataset,dataset_name)
         F1_auto = utl.test_automate(A,M,infos,mots,self.label,-1,dataset_name)
         F1_Auto_score = 0
         if (not_in_db):

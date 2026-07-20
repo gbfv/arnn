@@ -45,6 +45,11 @@ import os
 #===========================================================
 
 def test_of_tests():
+    """
+    Le test qui test beacoup de fonction utilitaire
+
+    Aussi un template pour les autres tests
+    """
     automate, final_states, info_automate = get_fsm_by_id(121) # el_automate
     show_automation(automate,info_automate)
     dataset_name = "test/el_grand_test"

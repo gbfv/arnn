@@ -142,7 +142,7 @@ def add_entry_auto(
     nb_etats ,
     data ):
     """
-    Ajoute une entrée dans la table Autos
+    Ajoute une entrée dans la table Autos (sans le F1 score)
     """
     global DB
     curr = get_cursor()

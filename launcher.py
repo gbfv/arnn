@@ -52,7 +52,8 @@ if __name__ == "__main__":
         gpus = [x for x in range(num_gpus)]
         print(f"Number of GPU found:{num_gpus}")
         process = [None] * num_gpus
-        array_exp = [Experiment(next_id) for _ in range(nb_per_gen)]
+        label = rng.choice(["multi-label","multi-classe","state"])
+        array_exp = [Experiment(next_id,label) for _ in range(nb_per_gen)]
 
         Man = mp.Manager()
         gpu_queue = Man.Queue()
