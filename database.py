@@ -110,12 +110,15 @@ def add_entry_dataset(
     data_test):
     """
     Ajoute une entrée dans la table Datasets
+
+    Retourne l'id de la ligne ajoutée
     """
     global DB
     curr = get_cursor()
-    curr.execute("INSERT INTO Datasets (lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?);",(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test))
+    curr.execute("INSERT INTO Datasets (lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id;",(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test))
+    res = curr.fetchone()[0]
     DB.commit()
-    pass
+    return res
 
 def add_entry_models(
         lang ,
@@ -127,11 +130,15 @@ def add_entry_models(
         data_specs):
     """
     Ajoute une entrée dans la table Models (sans le F1 score)
+
+    Retourne l'id de la ligne ajoutée
     """
     global DB
     curr = get_cursor()
-    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data,data_specs_only) VALUES (?,?,?,?,?,?,?);",(lang,dataset,name,epochs,weights,data,data_specs))
+    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data,data_specs_only) VALUES (?,?,?,?,?,?,?) RETURNING id;",(lang,dataset,name,epochs,weights,data,data_specs))
+    res = curr.fetchone()[0]
     DB.commit()
+    return res
 
 def add_entry_auto(
     lang ,
@@ -143,11 +150,15 @@ def add_entry_auto(
     data ):
     """
     Ajoute une entrée dans la table Autos (sans le F1 score)
+
+    Retourne l'id de la ligne ajoutée
     """
     global DB
     curr = get_cursor()
-    curr.execute("INSERT INTO Autos (lang ,dataset ,model ,name  ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?);",(lang ,dataset ,model ,name ,nb_clusters ,nb_etats ,data))
+    curr.execute("INSERT INTO Autos (lang ,dataset ,model ,name  ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?) RETURNING id;",(lang ,dataset ,model ,name ,nb_clusters ,nb_etats ,data))
+    res = curr.fetchone()[0]
     DB.commit()
+    return res
 
 
 
@@ -177,7 +188,7 @@ def give_raw_bytes_language(auto,finals,infos):
     return pickle.dumps(pak)
 
 
-def load_datasets_to_file(id:int):
+def load_datasets_to_file(id:int,dataset_name:str):
     """
     Charge les datasets de id <id> dans test/db_files* depuis la database
     """
@@ -188,38 +199,38 @@ def load_datasets_to_file(id:int):
         print("Problème avec la récupération du Dataset")
         return
     data = data[0]
-    open("test/db_files_train.txt","w").write(data[0])
-    open("test/db_files_val.txt","w").write(data[1])
-    open("test/db_files_test.txt","w").write(data[2])
+    open(f"{dataset_name}_train.txt","w").write(data[0])
+    open(f"{dataset_name}_val.txt","w").write(data[1])
+    open(f"{dataset_name}_test.txt","w").write(data[2])
     return
 
-def capture_datasets():
+def capture_datasets(dataset_name:str):
     """
     Transforme les datasets nommés test/db_files_* en blob de données
     """
-    d1 = open("test/db_files_train.txt","r").read()
-    d2 = open("test/db_files_val.txt","r").read()
-    d3 = open("test/db_files_test.txt","r").read()
+    d1 = open(f"{dataset_name}_train.txt","r").read()
+    d2 = open(f"{dataset_name}_val.txt","r").read()
+    d3 = open(f"{dataset_name}_test.txt","r").read()
     return d1,d2,d3
     
 
-def give_raw_bytes_model(M):
+def give_raw_bytes_model(M,random_key):
     """
     Transforme un modèle en blob de données (/!\ Possiblement non-portable, utiliser give_raw_bytes_model_specs si problèmes de compatibilité)
     """
-    torch.save(M,"test/tmp_model")
-    with open("test/tmp_model","rb") as f:
+    torch.save(M,f"test/tmp_model{random_key}")
+    with open(f"test/tmp_model{random_key}","rb") as f:
         return f.read()
 
-def give_raw_bytes_model_specs(M):
+def give_raw_bytes_model_specs(M,random_key):
     """
     Transforme les paramètres d'un modele en blob de données 
     """
-    torch.save(M.state_dict(),"test/tmp_model_specs")
-    with open("test/tmp_model_specs","rb") as f:
+    torch.save(M.state_dict(),f"test/tmp_model_specs{random_key}")
+    with open(f"test/tmp_model_specs{random_key}","rb") as f:
         return f.read()
 
-def load_model(id:int):
+def load_model(id:int,random_key):
     """
     Charge le modèle <id> depuis la database
     """
@@ -230,10 +241,10 @@ def load_model(id:int):
         print("Problème avec la récupération du Model")
         return
     data = data[0][0]
-    f = open("test/tmp_model","wb")
+    f = open(f"test/tmp_model{random_key}","wb")
     f.write(data)
     f.close()
-    return torch.load("test/tmp_model", weights_only=False).to(DEVICE)
+    return torch.load(f"test/tmp_model{random_key}", weights_only=False).to(DEVICE)
 
 def give_raw_bytes_auto(A):
     """

@@ -137,68 +137,86 @@ class Experiment():
         if len(ids_dataset) == 0:
             print("No dataset found creating it....")
             utl.create_dataset_and_save_it(auto,infos,self.label,self.nb_test,self.nb_train,self.len_test,self.len_train,dataset_name)
-            d1,d2,d3 = db.capture_datasets()
-            db.add_entry_dataset(self.id_lang,"no_specific_name",self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test,d1,d2,d3)
-            the_id_dataset = db.get_ids_dataset(self.id_lang,self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test)[0][0]
+            d1,d2,d3 = db.capture_datasets(dataset_name)
+            the_id_dataset = db.add_entry_dataset(self.id_lang,"no_specific_name",self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test,d1,d2,d3)
         else:
             the_id_dataset = ids_dataset[0][0]
             print(f"Dataset found (id:{the_id_dataset}), extracting...")
-            db.load_datasets_to_file(the_id_dataset)
+            db.load_datasets_to_file(the_id_dataset,dataset_name)
         return the_id_dataset
 
     def load_or_create_model(self,id_dataset,auto,infos_automate,dataset_name):
         """
         Charge le modèle demandé et s'il n'existe pas, le crée
 
-        Revoie le modèle, son id, et si il était dans la db avant l'appel de la fonction
+        Revoie le modèle, son id
         """
-        not_in_db = False
         the_id_model = -1
         mots = infos_automate["mots"]
         M = None
+        #on utilise une clé aléatoire pour ne pas avoir de problème de collision en cas de multi_treading
+        random_key = "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
         ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)
         if len(ids_models) == 0:
             print("No model found, Training....")
-            not_in_db = True
             epoch_done = 0
             M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto)
             # A noter il FAUT que l'epoch soit un multiple de 100
             for i in range(100,self.epochs+100,100):
                 M = utl.train_model(M,100,dataset_name)
                 epoch_done += 100
-                model_bytes = db.give_raw_bytes_model(M)
-                model_specs_bytes = db.give_raw_bytes_model_specs(M)
+                model_bytes = db.give_raw_bytes_model(M,random_key)
+                model_specs_bytes = db.give_raw_bytes_model_specs(M,random_key)
                 print("saving...")
-                db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",epoch_done,self.weight_id,model_bytes,model_specs_bytes)
-            the_id_model = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)[0][0]
+                the_id_model = db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",epoch_done,self.weight_id,model_bytes,model_specs_bytes)
+
+                #On fait le score et on sauvegarde
+                F1 = utl.test_model(M,self.label,dataset_name)
+                F1_mean = self.calculate_F1_mean(F1)
+                db.update_model_score(the_id_model,F1_mean)
+
         else:
             print("Model found, extracting...")
             the_id_model = ids_models[0][0]
-            M = db.load_model(the_id_model)
-        return M, the_id_model, not_in_db
+            M = db.load_model(the_id_model,random_key)
+        return M, the_id_model
 
-    def load_or_create_autos(self,model,id_model,id_dataset,dataset_name):
+    def load_or_create_autos(self,model,id_model,id_dataset,infos_automate,dataset_name):
         """
         Charge l'automate demandé et s'il n'existe pas, le crée
 
-        Revoie l'automate, son id, et si il était dans la db avant l'appel de la fonction
+        Revoie l'automate et son id
         """
-        not_in_db = False
         the_id_auto = -1
         A = None
+        mots = infos_automate["mots"]
         ids_autos = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)
         if len(ids_autos) == 0:
-            not_in_db = True
             print("No auto found, Creating...")
             A = utl.get_automate_from_model(model,infos,self.nb_clusters,dataset_name,"pred")
             bytes_auto = db.give_raw_bytes_auto(A)
-            db.add_entry_auto(self.id_lang,id_dataset,id_model,"no_specific_name",self.nb_clusters,len(A.Q),bytes_auto)
-            the_id_auto = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)[0][0]
+            the_id_auto = db.add_entry_auto(self.id_lang,id_dataset,id_model,"no_specific_name",self.nb_clusters,len(A.Q),bytes_auto)
+            F1 = utl.test_automate(A,model,infos_automate,mots,self.label,-1,dataset_name)
+            F1_mean = self.calculate_F1_mean(F1)
+            db.update_auto_score(the_id_auto,F1_mean)
         else:
             print("Auto found, extracting....")
             the_id_auto = ids_autos[0][0]
             A = db.load_auto_from_db(the_id_auto)
-        return A,the_id_auto,not_in_db
+        return A,the_id_auto
+
+
+    def calculate_F1_mean(self,F1):
+        """
+        Transforme le tableau de score F1 en un seul nombre dépandant du label de l'expérience
+        """
+        match self.label:
+            case "state":
+                return np.mean(F1)
+            case "multi-classe":
+                return F1[-1]
+            case "multi-label":
+                return np.mean([x[-1] for x in F1])
 
 
     def make_expe(self):
@@ -207,36 +225,20 @@ class Experiment():
 
         Renvoie le score F1 du modèle et de l'automate
         """
-        dataset_name = "test/" + "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
+        dataset_name = "test/" + "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8)) #On a besoin que se soit aléatoire si multi-thread
         auto,finals,infos = db.load_language(self.id_lang)
         mots = infos["mots"]
+        #Le dataset
         id_dataset = self.load_or_create_dataset(auto,finals,infos,dataset_name)
-        M, id_model, not_in_db = self.load_or_create_model(id_dataset,auto,infos,dataset_name)
+        #Le modèle
+        M, id_model= self.load_or_create_model(id_dataset,auto,infos,dataset_name)
         F1_model = utl.test_model(M,self.label,dataset_name)
-        F1_model_score = 0
-        print(F1_model)
-        if (not_in_db):
-            match self.label:
-                case "state":
-                    F1_model_score = np.mean(F1_model)
-                case "multi-classe":
-                    F1_model_score = F1_model[-1]
-                case "multi-label":
-                    F1_model_score = np.mean([x[-1] for x in F1_model])
-            db.update_model_score(id_model,F1_model_score)
-        A, the_id_auto, not_in_db = self.load_or_create_autos(M,id_model,id_dataset,dataset_name)
+        F1_model_mean = self.calculate_F1_mean(F1_model)
+        #L'automate
+        A, the_id_auto = self.load_or_create_autos(M,id_model,id_dataset,infos,dataset_name)
         F1_auto = utl.test_automate(A,M,infos,mots,self.label,-1,dataset_name)
-        F1_Auto_score = 0
-        if (not_in_db):
-            match self.label:
-                case "state":
-                    F1_Auto_score = np.mean(F1_auto)
-                case "multi-classe":
-                    F1_Auto_score = F1_auto[-1]
-                case "multi-label":
-                    F1_Auto_score = np.mean([x[-1] for x in F1_auto])
-            db.update_auto_score(the_id_auto,F1_Auto_score)
-        return F1_model_score, F1_Auto_score
+        F1_auto_mean = self.calculate_F1_mean(F1_auto)
+        return F1_model_mean, F1_auto_mean
 
 
 
@@ -313,4 +315,4 @@ if __name__ == "__main__":
             len(infos["mots"][0]),
             len(auto.states),infos["reset_char"] is None,
             by)
-        genetic_algorithm(next_id,10,10)
+        genetic_algorithm(next_id,10,4)
