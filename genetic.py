@@ -32,7 +32,7 @@ class Experiment():
 
     def clone(self,chance):
         """
-        Clone l'expérience avec pour chaque hyper parmaètre une chance de ne PAS être modifié
+        Clone l'expérience avec pour chaque hyperparmaètres une chance de ne PAS être modifiée
         """
         res = Experiment(self.id_lang,self.label)
         if rng.random() > chance:
@@ -92,11 +92,11 @@ class Experiment():
         self.weight_id = vals[8]
         self.nb_clusters = vals[9]
 
-    def reproduce(self,other):
+    def crossover(self,other):
         """
         Reproduit deux expériences.
 
-        Pour chaque hyperparamètre l'enfant à une chance sur 2 de recevoir celui du parent 1 ou 2
+        Pour chaque hyperparamètre l'enfant à une chance sur 2 de recevoir celui du parent 1 sinon il prend celui du parent 2
 
         Renvoie 2 enfants qui sont complémantaires
         """
@@ -124,19 +124,19 @@ class Experiment():
         return "|".join([f"{x}:{getattr(self,x)}" for x in all_vars if not str(getattr(self,x)).startswith("<")])
 
 
-    def load_or_create_dataset(self,auto,finals,infos,dataset_name):
+    def load_or_create_dataset(self,auto,finals,infos_automate,dataset_name):
         """
         Charge le dataset demandé et s'il n'existe pas, le crée
 
         Revoie l'id du dataset
         """
-        mots = infos["mots"]
+        mots = infos_automate["mots"]
         # Get the dataset
         the_id_dataset = -1
         ids_dataset = db.get_ids_dataset(self.id_lang,self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test)
         if len(ids_dataset) == 0:
             print("No dataset found creating it....")
-            utl.create_dataset_and_save_it(auto,infos,self.label,self.nb_test,self.nb_train,self.len_test,self.len_train,dataset_name)
+            utl.create_dataset_and_save_it(auto,infos_automate,self.label,self.nb_test,self.nb_train,self.len_test,self.len_train,dataset_name)
             d1,d2,d3 = db.capture_datasets(dataset_name)
             the_id_dataset = db.add_entry_dataset(self.id_lang,"no_specific_name",self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test,d1,d2,d3)
         else:
@@ -159,16 +159,14 @@ class Experiment():
         ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)
         if len(ids_models) == 0:
             print("No model found, Training....")
-            epoch_done = 0
             M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto)
             # A noter il FAUT que l'epoch soit un multiple de 100
             for i in range(100,self.epochs+100,100):
                 M = utl.train_model(M,100,dataset_name)
-                epoch_done += 100
                 model_bytes = db.give_raw_bytes_model(M,random_key)
                 model_specs_bytes = db.give_raw_bytes_model_specs(M,random_key)
                 print("saving...")
-                the_id_model = db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",epoch_done,self.weight_id,model_bytes,model_specs_bytes)
+                the_id_model = db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",i,self.weight_id,model_bytes,model_specs_bytes)
 
                 #On fait le score et on sauvegarde
                 F1 = utl.test_model(M,self.label,dataset_name)
@@ -265,7 +263,7 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     #First quarter reproduce
     rank_i = rank_i[:len(rank_i) // 2+1]
     for i in range(1,len(rank_i)):
-        E1,E2 = list_expes[rank_i[0]].reproduce(list_expes[rank_i[i]])
+        E1,E2 = list_expes[rank_i[0]].crossover(list_expes[rank_i[i]])
         new_expes.append(E1)
         new_expes.append(E2)
     return new_expes

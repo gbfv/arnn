@@ -23,7 +23,6 @@ def setup_db():
     """
     Met en place la DB (NE DOIT ETRE PAS ETRE APPELEE A CHAQUE FOIS)
     """
-    global DB
     curr = get_cursor()
     curr.execute("""CREATE TABLE IF NOT EXISTS Languages(
         id INTEGER  PRIMARY KEY AUTOINCREMENT,
@@ -90,7 +89,6 @@ def add_entry_lang(
     """
     Ajoute une entrée dans la table Languages
     """
-    global DB
     curr = get_cursor()
     curr.execute("INSERT INTO Languages (name,size_sigma,nb_words,len_words,size_auto,reset,data) VALUES (?,?,?,?,?,?,?);",(name,size_sigma,nb_words,len_words,size_auto,reset,data))
     DB.commit()
@@ -113,7 +111,6 @@ def add_entry_dataset(
 
     Retourne l'id de la ligne ajoutée
     """
-    global DB
     curr = get_cursor()
     curr.execute("INSERT INTO Datasets (lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id;",(lang,name,label,nb_train,len_train,nb_val,len_val,nb_test,len_test,data_train,data_val,data_test))
     res = curr.fetchone()[0]
@@ -133,7 +130,6 @@ def add_entry_models(
 
     Retourne l'id de la ligne ajoutée
     """
-    global DB
     curr = get_cursor()
     curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data,data_specs_only) VALUES (?,?,?,?,?,?,?) RETURNING id;",(lang,dataset,name,epochs,weights,data,data_specs))
     res = curr.fetchone()[0]
@@ -153,7 +149,6 @@ def add_entry_auto(
 
     Retourne l'id de la ligne ajoutée
     """
-    global DB
     curr = get_cursor()
     curr.execute("INSERT INTO Autos (lang ,dataset ,model ,name  ,nb_clusters ,nb_etats ,data ) VALUES (?,?,?,?,?,?,?) RETURNING id;",(lang ,dataset ,model ,name ,nb_clusters ,nb_etats ,data))
     res = curr.fetchone()[0]
@@ -271,7 +266,6 @@ def update_model_score(id_model:int,score:float):
     """
     Update le F1 score du modèle id_model
     """
-    global DB
     curr = get_cursor()
     curr.execute("UPDATE Models SET F1_mean = ? WHERE id = ?;",(score,id_model))
     DB.commit()
@@ -280,7 +274,6 @@ def update_auto_score(id_auto:int,score:float):
     """
     Update le F1 score de l'automate id_auto
     """
-    global DB
     curr = get_cursor()
     curr.execute("UPDATE Autos SET F1_mean = ? WHERE id = ?;",(score,id_auto))
     DB.commit()

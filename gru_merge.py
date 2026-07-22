@@ -12,15 +12,15 @@ DEVICE = get_device()
 
 
 class TOY_GRU(nn.Module):
-    #hyperparametres (les passer en argument de la classe ?)
-    embedding_dim:int = 2
-    hidden_dim = 50
-    epochs = 500
 
-    def __init__(self, method, nbClasses=None, mots=None,weights=None):
+    def __init__(self, method, nbClasses=None, mots=None,weights=None,epochs=500,embedding_dim=2,hidden_dim=50):
         super(TOY_GRU, self).__init__()
-        self.embedding = nn.Embedding(LETTERS, TOY_GRU.embedding_dim)  # 256 pour le padding
-        self.gru = nn.GRU(TOY_GRU.embedding_dim, TOY_GRU.hidden_dim, batch_first=True)  # batch_first=False par défaut
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.epochs = epochs
+
+        self.embedding = nn.Embedding(LETTERS, self.embedding_dim)  # 256 pour le padding
+        self.gru = nn.GRU(self.embedding_dim, self.hidden_dim, batch_first=True)  # batch_first=False par défaut
         self.method = method
 
         if method == "multi-classe":
@@ -32,7 +32,7 @@ class TOY_GRU(nn.Module):
 
 
     def multi_classe(self, nbClasses): #nbClasses = 1 pour du binaire, >1 pour du multi-classe
-        self.linear = nn.Linear(TOY_GRU.hidden_dim, nbClasses)
+        self.linear = nn.Linear(self.hidden_dim, nbClasses)
         self.nbClasses = nbClasses
         if nbClasses == 1: #TODO: voir pour gerer les poids
             self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(16.0))  # Binary Cross-Entropy Loss pour les sorties binaires
@@ -41,7 +41,7 @@ class TOY_GRU(nn.Module):
 
     def multi_label(self, mots, weights):
         length_mot = len(mots[0])+1 #position dans le mot + 0
-        self.heads = nn.ModuleList([nn.Linear(TOY_GRU.hidden_dim, length_mot) for _ in range(len(mots))]) # une tête de classification par mot
+        self.heads = nn.ModuleList([nn.Linear(self.hidden_dim, length_mot) for _ in range(len(mots))]) # une tête de classification par mot
         if not weights:
             self.criterion = nn.CrossEntropyLoss()
         else: # Gère les poids
@@ -49,7 +49,7 @@ class TOY_GRU(nn.Module):
 
 
     def get_hidden_size(self):
-        return TOY_GRU.hidden_dim
+        return self.hidden_dim
 
 
     def forward(self, x, hidden_state=None):
@@ -119,7 +119,7 @@ class TOY_GRU(nn.Module):
         chunk_size = 1000 #65535  # Taille des chunks pour l'entrainement
 
         # Boucle d'entraînement
-        for epoch in range(TOY_GRU.epochs):
+        for epoch in range(self.epochs):
             time_begin_epoch = time.time()
             self.train()  # Mettre le modèle en mode entraînement
             epoch_loss = 0
@@ -157,11 +157,11 @@ class TOY_GRU(nn.Module):
                 print(f"Early stopping at epoch {epoch+1} with loss {epoch_loss/cpt:.4f}")
                 break
             if (epoch + 1) % 10 == 0:
-                time_remaining = (TOY_GRU.epochs - epoch+1) * (time_end_epoch - time_begin_epoch)
+                time_remaining = (self.epochs - epoch+1) * (time_end_epoch - time_begin_epoch)
                 hours = int(time_remaining / 3600)
                 mins = int((int(time_remaining) % 3600)/60)
                 secs = int(time_remaining) % 60
-                print(f'Epoch [{epoch+1}/{TOY_GRU.epochs}], Loss: {epoch_loss/cpt:.4f},Time remaining:{hours}h {mins}min {secs}s')
+                print(f'Epoch [{epoch+1}/{self.epochs}], Loss: {epoch_loss/cpt:.4f},Time remaining:{hours}h {mins}min {secs}s')
             if (epoch + 1) % val_step == 0:
                 val_loss = self.validate(dataloader_val)
 
@@ -262,9 +262,9 @@ class TOY_GRU(nn.Module):
 
     def get_hyperparameters(self):
         return {
-            "embedding_dim": TOY_GRU.embedding_dim,
-            "hidden_dim": TOY_GRU.hidden_dim,
-            "epochs": TOY_GRU.epochs
+            "embedding_dim": self.embedding_dim,
+            "hidden_dim": self.hidden_dim,
+            "epochs": self.epochs
         }
 
 

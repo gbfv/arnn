@@ -14,13 +14,7 @@ import argparse
 from re import finditer
 
 from logDataset import LogDataset
-# from gru_multi_test import Test_TMGRU
-# from gru_test import Test_TGRU
-# from gru_labels_test import Test_LGRU
 from gru_merge import TOY_GRU
-# from automaton import Automaton
-# from automaton_multi import Automaton_multi
-# from automaton_multi_label import Automaton_multi_label
 from automaton_merge import TOY_Automaton
 from main import load_model, pad_batch
 from utils import get_device
