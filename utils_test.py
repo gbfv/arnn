@@ -93,7 +93,7 @@ def create_dataset_and_save_it(automate, info_automate, methode:str, nb_words_te
 
 
 
-def create_model(mots, method: str, weights,automate_if_state=None) -> TOY_GRU:
+def create_model(mots, method: str, weights,automate_if_state=None,epochs=500,embedding_dim=2,hidden_dim=50) -> TOY_GRU:
     """
     Crée et retourne un model non entrainé sur un language et méthode donnée
     """
@@ -104,7 +104,7 @@ def create_model(mots, method: str, weights,automate_if_state=None) -> TOY_GRU:
         num_classes = max([len(word) for word in mots]) + 1
     # state est une version de multi-classe
     label_method = "multi-classe" if method == "state" else method
-    return TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights).to(toy_example.DEVICE)
+    return TOY_GRU(label_method, nbClasses=num_classes, mots=mots, weights=weights,epochs=epochs,embedding_dim=embedding_dim,hidden_dim=hidden_dim).to(toy_example.DEVICE)
 
 def train_model(model: TOY_GRU, epochs: int, dataset_name: str):
     """
@@ -118,7 +118,7 @@ def train_model(model: TOY_GRU, epochs: int, dataset_name: str):
     dataset_val = TensorDataset(torch.tensor(X_val), torch.tensor(Y_val))
     dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=False)
 
-    TOY_GRU.epochs = epochs
+    model.epochs = epochs
     print(f"Hyperparamètres : {model.get_hyperparameters()}")
     model.train_model(dataloader_tr, dataloader_val)
 

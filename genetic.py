@@ -13,9 +13,10 @@ import os
 """
 class Experiment():
     def __init__(self,id_lang,label):
-        self.id_lang = id_lang
+        self.data = {}
+        self.data["id_lang"] = id_lang
         self.nb_train = rng.randrange(50,2000,100)
-        self.len_train = rng.randrange(50,700,20)
+        self.len_train = 40#rng.randrange(50,700,20)
 
         self.nb_val = rng.randrange(50,2000,100)
         self.len_val = rng.randrange(50,700,20)
@@ -29,6 +30,9 @@ class Experiment():
         self.weight_id = rng.randint(0,3)
 
         self.nb_clusters = rng.randrange(100,800,50)
+
+        self.embedding_dim = rng.randrange(1,5,1)
+        self.hidden_dim = rng.randrange(10,100,10)
 
     def clone(self,chance):
         """
@@ -58,6 +62,12 @@ class Experiment():
             
         if rng.random() > chance:
             res.nb_clusters = self.nb_clusters
+
+        if rng.random() > chance:
+            res.embedding_dim = self.embedding_dim
+            
+        if rng.random() > chance:
+            res.hidden_dim = self.hidden_dim
         return res
 
     def export_values(self):
@@ -75,6 +85,8 @@ class Experiment():
         res.append(self.epochs)
         res.append(self.weight_id)
         res.append(self.nb_clusters)
+        res.append(self.embedding_dim)
+        res.append(self.hidden_dim)
         return res
     
     def import_values(self,vals):
@@ -91,6 +103,8 @@ class Experiment():
         self.epochs = vals[7]
         self.weight_id = vals[8]
         self.nb_clusters = vals[9]
+        self.embedding_dim = vals[8]
+        self.hidden_dim = vals[9]
 
     def crossover(self,other):
         """
@@ -156,17 +170,17 @@ class Experiment():
         M = None
         #on utilise une clé aléatoire pour ne pas avoir de problème de collision en cas de multi_treading
         random_key = "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
-        ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id)
+        ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id,self.embedding_dim,self.hidden_dim)
         if len(ids_models) == 0:
             print("No model found, Training....")
-            M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto)
+            M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto,self.epochs,self.embedding_dim,self.hidden_dim)
             # A noter il FAUT que l'epoch soit un multiple de 100
             for i in range(100,self.epochs+100,100):
                 M = utl.train_model(M,100,dataset_name)
                 model_bytes = db.give_raw_bytes_model(M,random_key)
                 model_specs_bytes = db.give_raw_bytes_model_specs(M,random_key)
                 print("saving...")
-                the_id_model = db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",i,self.weight_id,model_bytes,model_specs_bytes)
+                the_id_model = db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",i,self.weight_id,self.embedding_dim,self.hidden_dim,model_bytes,model_specs_bytes)
 
                 #On fait le score et on sauvegarde
                 F1 = utl.test_model(M,self.label,dataset_name)

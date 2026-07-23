@@ -58,6 +58,8 @@ def setup_db():
         name STRING,
         epochs INTEGER,
         weights INTEGER,
+        embedding_dim INTEGER,
+        hidden_dim INTEGER,
         F1_mean FLOAT,
         data BLOB,
         data_specs_only BLOB
@@ -123,6 +125,8 @@ def add_entry_models(
         name ,
         epochs ,
         weights ,
+        embedding_dim,
+        hidden_dim,
         data,
         data_specs):
     """
@@ -131,7 +135,7 @@ def add_entry_models(
     Retourne l'id de la ligne ajoutée
     """
     curr = get_cursor()
-    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,data,data_specs_only) VALUES (?,?,?,?,?,?,?) RETURNING id;",(lang,dataset,name,epochs,weights,data,data_specs))
+    curr.execute("INSERT INTO Models (lang,dataset,name,epochs,weights,embedding_dim,hidden_dim,data,data_specs_only) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id;",(lang,dataset,name,epochs,weights,embedding_dim,hidden_dim,data,data_specs))
     res = curr.fetchone()[0]
     DB.commit()
     return res
@@ -299,7 +303,7 @@ def get_ids_dataset(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_tes
     data = curr.fetchall()
     return data
 
-def get_ids_models(lang,dataset,epochs,weights):
+def get_ids_models(lang,dataset,epochs,weights,embedding_dim,hidden_dim):
     """
     Récupère tout les ids correspondant au paramètres donnés
     """
@@ -308,8 +312,10 @@ def get_ids_models(lang,dataset,epochs,weights):
         lang = ? AND
         dataset = ? AND
         epochs = ? AND
-        weights = ?
-        """,(lang,dataset,epochs,weights))
+        weights = ? AND
+        embedding_dim = ? AND
+        hidden_dim = ?
+        """,(lang,dataset,epochs,weights,embedding_dim,hidden_dim))
     data = curr.fetchall()
     return data
 
