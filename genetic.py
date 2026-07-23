@@ -13,98 +13,50 @@ import os
 """
 class Experiment():
     def __init__(self,id_lang,label):
-        self.data = {}
+        self.data:dict= {}
         self.data["id_lang"] = id_lang
-        self.nb_train = rng.randrange(50,2000,100)
-        self.len_train = 40#rng.randrange(50,700,20)
+        self.data["nb_train"] = rng.randrange(50,2000,100)
+        self.data["len_train"] = rng.randrange(50,700,20)
 
-        self.nb_val = rng.randrange(50,2000,100)
-        self.len_val = rng.randrange(50,700,20)
+        self.data["nb_val"] = rng.randrange(50,2000,100)
+        self.data["len_val"] = rng.randrange(50,700,20)
 
-        self.nb_test = rng.randrange(50,2000,100)
-        self.len_test = rng.randrange(50,700,20)
+        self.data["nb_test"] = rng.randrange(50,2000,100)
+        self.data["len_test"] = rng.randrange(50,700,20)
 
-        self.label = label
-        self.epochs = 500
+        self.data["label"] = label
+        self.data["epochs"] = 500
 
-        self.weight_id = rng.randint(0,3)
+        self.data["weight_id"] = rng.randint(0,3)
 
-        self.nb_clusters = rng.randrange(100,800,50)
+        self.data["nb_clusters"] = rng.randrange(100,800,50)
 
-        self.embedding_dim = rng.randrange(1,5,1)
-        self.hidden_dim = rng.randrange(10,100,10)
+        self.data["embedding_dim"] = rng.randrange(1,5,1)
+        self.data["hidden_dim"] = rng.randrange(10,100,10)
 
     def clone(self,chance):
         """
         Clone l'expérience avec pour chaque hyperparmaètres une chance de ne PAS être modifiée
         """
-        res = Experiment(self.id_lang,self.label)
-        if rng.random() > chance:
-            res.len_train = self.len_train
-        
-        if rng.random() > chance:
-            res.nb_train = self.nb_train
+        res = Experiment(self.data["id_lang"],self.data["label"])
 
-        if rng.random() > chance:
-            res.len_val = self.len_val
+        for key, val in self.data.items():
+            if rng.random() > chance:
+                res.data[key] = val
 
-        if rng.random() > chance:
-            res.nb_val = self.nb_val
-
-        if rng.random() > chance:
-            res.len_test = self.len_test
-        
-        if rng.random() > chance:
-            res.nb_test = self.nb_test
-
-        if rng.random() > chance:
-            res.weight_id = self.weight_id
-            
-        if rng.random() > chance:
-            res.nb_clusters = self.nb_clusters
-
-        if rng.random() > chance:
-            res.embedding_dim = self.embedding_dim
-            
-        if rng.random() > chance:
-            res.hidden_dim = self.hidden_dim
         return res
 
     def export_values(self):
         """
         Exporte les valeurs
         """
-        res = []
-        res.append(self.nb_train)
-        res.append(self.len_train)
-        res.append(self.nb_val)
-        res.append(self.len_val)
-        res.append(self.nb_test)
-        res.append(self.len_test)
-        res.append(self.label)
-        res.append(self.epochs)
-        res.append(self.weight_id)
-        res.append(self.nb_clusters)
-        res.append(self.embedding_dim)
-        res.append(self.hidden_dim)
-        return res
+        return self.data
     
     def import_values(self,vals):
         """
         Importe les valeurs
         """
-        self.nb_train = vals[0]
-        self.len_train = vals[1]
-        self.nb_val = vals[2]
-        self.len_val = vals[3]
-        self.nb_test = vals[4]
-        self.len_test = vals[5]
-        self.label = vals[6]
-        self.epochs = vals[7]
-        self.weight_id = vals[8]
-        self.nb_clusters = vals[9]
-        self.embedding_dim = vals[8]
-        self.hidden_dim = vals[9]
+        self.data = vals
 
     def crossover(self,other):
         """
@@ -114,20 +66,18 @@ class Experiment():
 
         Renvoie 2 enfants qui sont complémantaires
         """
-        self_vals = self.export_values()
-        other_values = other.export_values()
-        new_experience_1_vals = []
-        new_experience_2_vals = []
-        for i in range(len(self_vals)):
+        new_experience_1_vals = {}
+        new_experience_2_vals = {}
+        for key,vals in self.data.items():
             choice = rng.choice(["self","other"])
             if choice == "self":
-                new_experience_1_vals.append(self_vals[i])
-                new_experience_2_vals.append(other_values[i])
+                new_experience_1_vals[key] = self.data[key]
+                new_experience_2_vals[key] = other.data[key]
             else:
-                new_experience_1_vals.append(other_values[i])
-                new_experience_2_vals.append(self_vals[i])
-        E1 = Experiment(self.id_lang,self.label)
-        E2 = Experiment(self.id_lang,self.label)
+                new_experience_1_vals[key] = other.data[key]
+                new_experience_2_vals[key] = self.data[key]
+        E1 = Experiment(self.data["id_lang"],self.data["label"])
+        E2 = Experiment(self.data["id_lang"],self.data["label"])
         E1.import_values(new_experience_1_vals)
         E2.import_values(new_experience_2_vals)
         return E1,E2
@@ -147,12 +97,12 @@ class Experiment():
         mots = infos_automate["mots"]
         # Get the dataset
         the_id_dataset = -1
-        ids_dataset = db.get_ids_dataset(self.id_lang,self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test)
+        ids_dataset = db.get_ids_dataset(self.data["id_lang"],self.data["label"],self.data["nb_train"],self.data["len_train"],self.data["nb_val"],self.data["len_val"],self.data["nb_test"],self.data["len_test"])
         if len(ids_dataset) == 0:
             print("No dataset found creating it....")
-            utl.create_dataset_and_save_it(auto,infos_automate,self.label,self.nb_test,self.nb_train,self.len_test,self.len_train,dataset_name)
+            utl.create_dataset_and_save_it(auto,infos_automate,self.data["label"],self.data["nb_test"],self.data["nb_train"],self.data["len_test"],self.data["len_train"],dataset_name)
             d1,d2,d3 = db.capture_datasets(dataset_name)
-            the_id_dataset = db.add_entry_dataset(self.id_lang,"no_specific_name",self.label,self.nb_train,self.len_train,self.nb_val,self.len_val,self.nb_test,self.len_test,d1,d2,d3)
+            the_id_dataset = db.add_entry_dataset(self.data["id_lang"],"no_specific_name",self.data["label"],self.data["nb_train"],self.data["len_train"],self.data["nb_val"],self.data["len_val"],self.data["nb_test"],self.data["len_test"],d1,d2,d3)
         else:
             the_id_dataset = ids_dataset[0][0]
             print(f"Dataset found (id:{the_id_dataset}), extracting...")
@@ -170,20 +120,20 @@ class Experiment():
         M = None
         #on utilise une clé aléatoire pour ne pas avoir de problème de collision en cas de multi_treading
         random_key = "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
-        ids_models = db.get_ids_models(self.id_lang,id_dataset,self.epochs,self.weight_id,self.embedding_dim,self.hidden_dim)
+        ids_models = db.get_ids_models(self.data["id_lang"],id_dataset,self.data["epochs"],self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"])
         if len(ids_models) == 0:
             print("No model found, Training....")
-            M = utl.create_model(mots,self.label,utl.make_weights(self.weight_id,mots),auto,self.epochs,self.embedding_dim,self.hidden_dim)
+            M = utl.create_model(mots,self.data["label"],utl.make_weights(self.data["weight_id"],mots),auto,self.data["epochs"],self.data["embedding_dim"],self.data["hidden_dim"])
             # A noter il FAUT que l'epoch soit un multiple de 100
-            for i in range(100,self.epochs+100,100):
+            for i in range(100,self.data["epochs"]+100,100):
                 M = utl.train_model(M,100,dataset_name)
                 model_bytes = db.give_raw_bytes_model(M,random_key)
                 model_specs_bytes = db.give_raw_bytes_model_specs(M,random_key)
                 print("saving...")
-                the_id_model = db.add_entry_models(self.id_lang,id_dataset,"no_specific_name",i,self.weight_id,self.embedding_dim,self.hidden_dim,model_bytes,model_specs_bytes)
+                the_id_model = db.add_entry_models(self.data["id_lang"],id_dataset,"no_specific_name",i,self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"],model_bytes,model_specs_bytes)
 
                 #On fait le score et on sauvegarde
-                F1 = utl.test_model(M,self.label,dataset_name)
+                F1 = utl.test_model(M,self.data["label"],dataset_name)
                 F1_mean = self.calculate_F1_mean(F1)
                 db.update_model_score(the_id_model,F1_mean)
 
@@ -202,13 +152,13 @@ class Experiment():
         the_id_auto = -1
         A = None
         mots = infos_automate["mots"]
-        ids_autos = db.get_ids_autos(self.id_lang,id_dataset,id_model,self.nb_clusters)
+        ids_autos = db.get_ids_autos(self.data["id_lang"],id_dataset,id_model,self.data["nb_clusters"])
         if len(ids_autos) == 0:
             print("No auto found, Creating...")
-            A = utl.get_automate_from_model(model,infos,self.nb_clusters,dataset_name,"pred")
+            A = utl.get_automate_from_model(model,infos,self.data["nb_clusters"],dataset_name,"pred")
             bytes_auto = db.give_raw_bytes_auto(A)
-            the_id_auto = db.add_entry_auto(self.id_lang,id_dataset,id_model,"no_specific_name",self.nb_clusters,len(A.Q),bytes_auto)
-            F1 = utl.test_automate(A,model,infos_automate,mots,self.label,-1,dataset_name)
+            the_id_auto = db.add_entry_auto(self.data["id_lang"],id_dataset,id_model,"no_specific_name",self.data["nb_clusters"],len(A.Q),bytes_auto)
+            F1 = utl.test_automate(A,model,infos_automate,mots,self.data["label"],-1,dataset_name)
             F1_mean = self.calculate_F1_mean(F1)
             db.update_auto_score(the_id_auto,F1_mean)
         else:
@@ -222,7 +172,7 @@ class Experiment():
         """
         Transforme le tableau de score F1 en un seul nombre dépandant du label de l'expérience
         """
-        match self.label:
+        match self.data["label"]:
             case "state":
                 return np.mean(F1)
             case "multi-classe":
@@ -238,17 +188,17 @@ class Experiment():
         Renvoie le score F1 du modèle et de l'automate
         """
         dataset_name = "test/" + "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8)) #On a besoin que se soit aléatoire si multi-thread
-        auto,finals,infos = db.load_language(self.id_lang)
+        auto,finals,infos = db.load_language(self.data["id_lang"])
         mots = infos["mots"]
         #Le dataset
         id_dataset = self.load_or_create_dataset(auto,finals,infos,dataset_name)
         #Le modèle
         M, id_model= self.load_or_create_model(id_dataset,auto,infos,dataset_name)
-        F1_model = utl.test_model(M,self.label,dataset_name)
+        F1_model = utl.test_model(M,self.data["label"],dataset_name)
         F1_model_mean = self.calculate_F1_mean(F1_model)
         #L'automate
         A, the_id_auto = self.load_or_create_autos(M,id_model,id_dataset,infos,dataset_name)
-        F1_auto = utl.test_automate(A,M,infos,mots,self.label,-1,dataset_name)
+        F1_auto = utl.test_automate(A,M,infos,mots,self.data["label"],-1,dataset_name)
         F1_auto_mean = self.calculate_F1_mean(F1_auto)
         return F1_model_mean, F1_auto_mean
 
@@ -267,6 +217,7 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     Renvoie la liste de nouvelle expériences
     """
     rank_i = np.argsort(scores)
+    print(rank_i)
     rank_i = np.flip(rank_i)[:len(list_expes)//2]
     
     new_expes = []
