@@ -25,7 +25,7 @@ class Experiment():
         self.data["len_test"] = rng.randrange(50,700,20)
 
         self.data["label"] = label
-        self.data["epochs"] = 500
+        self.data["epochs"] = rng.randrange(100,1000,100)
 
         self.data["weight_id"] = rng.randint(0,3)
 
@@ -109,6 +109,17 @@ class Experiment():
             db.load_datasets_to_file(the_id_dataset,dataset_name)
         return the_id_dataset
 
+    def train_model_and_save(self,M,dataset_name,epochs,total_epochs_done,random_key,id_dataset):
+        M = utl.train_model(M,epochs,dataset_name)
+        model_bytes = db.give_raw_bytes_model(M,random_key)
+        model_specs_bytes = db.give_raw_bytes_model_specs(M,random_key)
+        the_id_model = db.add_entry_models(self.data["id_lang"],id_dataset,"no_specific_name",total_epochs_done,self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"],model_bytes,model_specs_bytes)
+        #On fait le score et on sauvegarde
+        F1 = utl.test_model(M,self.data["label"],dataset_name)
+        F1_mean = self.calculate_F1_mean(F1)
+        db.update_model_score(the_id_model,F1_mean)
+        return M, the_id_model
+
     def load_or_create_model(self,id_dataset,auto,infos_automate,dataset_name):
         """
         Charge le modèle demandé et s'il n'existe pas, le crée
@@ -120,27 +131,34 @@ class Experiment():
         M = None
         #on utilise une clé aléatoire pour ne pas avoir de problème de collision en cas de multi_treading
         random_key = "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
-        ids_models = db.get_ids_models(self.data["id_lang"],id_dataset,self.data["epochs"],self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"])
-        if len(ids_models) == 0:
+        ids_models_and_epochs = db.get_ids_models(self.data["id_lang"],id_dataset,self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"])
+        if len(ids_models_and_epochs) == 0:
             print("No model found, Training....")
             M = utl.create_model(mots,self.data["label"],utl.make_weights(self.data["weight_id"],mots),auto,self.data["epochs"],self.data["embedding_dim"],self.data["hidden_dim"])
             # A noter il FAUT que l'epoch soit un multiple de 100
             for i in range(100,self.data["epochs"]+100,100):
-                M = utl.train_model(M,100,dataset_name)
-                model_bytes = db.give_raw_bytes_model(M,random_key)
-                model_specs_bytes = db.give_raw_bytes_model_specs(M,random_key)
-                print("saving...")
-                the_id_model = db.add_entry_models(self.data["id_lang"],id_dataset,"no_specific_name",i,self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"],model_bytes,model_specs_bytes)
-
-                #On fait le score et on sauvegarde
-                F1 = utl.test_model(M,self.data["label"],dataset_name)
-                F1_mean = self.calculate_F1_mean(F1)
-                db.update_model_score(the_id_model,F1_mean)
-
+                M, the_id_model = self.train_model_and_save(M,dataset_name,100,i,random_key,id_dataset)
         else:
             print("Model found, extracting...")
-            the_id_model = ids_models[0][0]
-            M = db.load_model(the_id_model,random_key)
+            #On cherche le plus proche en dessous on SAIT qu'il y en a un car le minimum est 100
+            nb_epochs_to_do = -1
+            id_to_take = -1
+            for id_model,epo in ids_models_and_epochs:
+                if epo <= self.data["epochs"] and (nb_epochs_to_do == -1 or self.data["epochs"] - epo < nb_epochs_to_do):
+                    id_to_take = id_model
+                    nb_epochs_to_do = self.data["epochs"] - epo
+            M = None
+            #This one SHOULD not happend but we cover it
+            if (id_to_take == -1):
+                M = utl.create_model(mots,self.data["label"],utl.make_weights(self.data["weight_id"],mots),auto,self.data["epochs"],self.data["embedding_dim"],self.data["hidden_dim"])
+                M,the_id_model= self.train_model_and_save(M,dataset_name,self.data["epochs"],self.data["epochs"],random_key,id_dataset)
+                return M,the_id_model
+            if (nb_epochs_to_do == 0):
+                M = db.load_model(id_to_take,random_key)
+                the_id_model = id_to_take
+            else:
+                M = db.load_model(id_to_take,random_key)
+                M,the_id_model = self.train_model_and_save(M,dataset_name,nb_epochs_to_do,self.data["epochs"],random_key,id_dataset)
         return M, the_id_model
 
     def load_or_create_autos(self,model,id_model,id_dataset,infos_automate,dataset_name):
@@ -155,7 +173,7 @@ class Experiment():
         ids_autos = db.get_ids_autos(self.data["id_lang"],id_dataset,id_model,self.data["nb_clusters"])
         if len(ids_autos) == 0:
             print("No auto found, Creating...")
-            A = utl.get_automate_from_model(model,infos,self.data["nb_clusters"],dataset_name,"pred")
+            A = utl.get_automate_from_model(model,infos_automate,self.data["nb_clusters"],dataset_name,"pred")
             bytes_auto = db.give_raw_bytes_auto(A)
             the_id_auto = db.add_entry_auto(self.data["id_lang"],id_dataset,id_model,"no_specific_name",self.data["nb_clusters"],len(A.Q),bytes_auto)
             F1 = utl.test_automate(A,model,infos_automate,mots,self.data["label"],-1,dataset_name)
@@ -253,7 +271,7 @@ def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
 
         
     
-
+import sys
 
 if __name__ == "__main__":
     db.setup_db()

@@ -303,19 +303,19 @@ def get_ids_dataset(lang,label,nb_train,len_train,nb_val,len_val,nb_test,len_tes
     data = curr.fetchall()
     return data
 
-def get_ids_models(lang,dataset,epochs,weights,embedding_dim,hidden_dim):
+def get_ids_models(lang,dataset,weights,embedding_dim,hidden_dim):
     """
     Récupère tout les ids correspondant au paramètres donnés
     """
     curr = get_cursor()
-    curr.execute("""SELECT id FROM Models WHERE 
+    curr.execute("""SELECT id,epochs FROM Models WHERE 
         lang = ? AND
         dataset = ? AND
-        epochs = ? AND
         weights = ? AND
         embedding_dim = ? AND
         hidden_dim = ?
-        """,(lang,dataset,epochs,weights,embedding_dim,hidden_dim))
+        ORDER BY epochs DESC;
+        """,(lang,dataset,weights,embedding_dim,hidden_dim))
     data = curr.fetchall()
     return data
 
