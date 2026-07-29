@@ -76,6 +76,17 @@ def setup_db():
         F1_mean FLOAT,
         data BLOB
     );""")
+    curr.execute("""CREATE TABLE IF NOT EXISTS Exp(
+        id INTEGER  PRIMARY KEY AUTOINCREMENT,
+        lang INTEGER,
+        dataset INTEGER,
+        model INTEGER,
+        auto INTEGER,
+        generation INTEGER,
+        F1_model FLOAT,
+        F1_auto FLOAT);
+    """
+    )
 
     DB.commit()
     curr.close()
@@ -160,6 +171,20 @@ def add_entry_auto(
     DB.commit()
     return res
 
+def add_entry_exp(
+    lang ,
+    dataset ,
+    model ,
+    auto ,
+    generation ,
+    F1_model ,
+    F1_auto):
+    """
+    Ajoute une entrée dans la table Exp 
+    """
+    curr = get_cursor()
+    curr.execute("INSERT INTO Exp (lang ,dataset ,model ,auto  ,generation ,F1_model ,F1_auto ) VALUES (?,?,?,?,?,?,?);",(lang ,dataset ,model ,auto ,generation ,F1_model ,F1_auto))
+    DB.commit()
 
 
 def load_language(id:int):

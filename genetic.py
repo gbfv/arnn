@@ -199,7 +199,7 @@ class Experiment():
                 return np.mean([x[-1] for x in F1])
 
 
-    def make_expe(self):
+    def make_expe(self,nb_generation:int):
         """
         Fais l'expérience et remmplit la base de donnée
 
@@ -218,6 +218,7 @@ class Experiment():
         A, the_id_auto = self.load_or_create_autos(M,id_model,id_dataset,infos,dataset_name)
         F1_auto = utl.test_automate(A,M,infos,mots,self.data["label"],-1,dataset_name)
         F1_auto_mean = self.calculate_F1_mean(F1_auto)
+        db.add_entry_exp(self.data["id_lang"],id_dataset,id_model,the_id_auto,nb_generation,F1_model_mean,F1_auto_mean)
         return F1_model_mean, F1_auto_mean
 
 
@@ -262,7 +263,7 @@ def genetic_algorithm(id_language:int,generations:int,nb_tested:int):
     scores = []
     for i in range(generations):
         for e in pool:
-            F1_m,F1_a = e.make_expe()
+            F1_m,F1_a = e.make_expe(i)
             scores.append(F1_a)
         pool = next_gen(pool,scores)
         scores = []
