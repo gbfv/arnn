@@ -6,7 +6,7 @@ import utils_test as utl
 import database as db
 import numpy as np
 import os
-
+import logging
 
 """
     L'expérience est une classe qui représente un ensemble d'hyperparamètres
@@ -27,7 +27,7 @@ class Experiment():
         self.data["label"] = label
         self.data["epochs"] = rng.randrange(100,1000,100)
 
-        self.data["weight_id"] = rng.randint(0,3)
+        self.data["weight_id"] = rng.randint(0,2)
 
         self.data["nb_clusters"] = rng.randrange(100,800,50)
 
@@ -99,13 +99,13 @@ class Experiment():
         the_id_dataset = -1
         ids_dataset = db.get_ids_dataset(self.data["id_lang"],self.data["label"],self.data["nb_train"],self.data["len_train"],self.data["nb_val"],self.data["len_val"],self.data["nb_test"],self.data["len_test"])
         if len(ids_dataset) == 0:
-            print("No dataset found creating it....")
+            logging.info("No dataset found creating it....")
             utl.create_dataset_and_save_it(auto,infos_automate,self.data["label"],self.data["nb_test"],self.data["nb_train"],self.data["len_test"],self.data["len_train"],dataset_name)
             d1,d2,d3 = db.capture_datasets(dataset_name)
             the_id_dataset = db.add_entry_dataset(self.data["id_lang"],"no_specific_name",self.data["label"],self.data["nb_train"],self.data["len_train"],self.data["nb_val"],self.data["len_val"],self.data["nb_test"],self.data["len_test"],d1,d2,d3)
         else:
             the_id_dataset = ids_dataset[0][0]
-            print(f"Dataset found (id:{the_id_dataset}), extracting...")
+            logging.info(f"Dataset found (id:{the_id_dataset}), extracting...")
             db.load_datasets_to_file(the_id_dataset,dataset_name)
         return the_id_dataset
 
@@ -133,13 +133,13 @@ class Experiment():
         random_key = "".join(rng.choices(list("azertyuiopqsdfghjklmwxcvbn1234567890"),k=8))
         ids_models_and_epochs = db.get_ids_models(self.data["id_lang"],id_dataset,self.data["weight_id"],self.data["embedding_dim"],self.data["hidden_dim"])
         if len(ids_models_and_epochs) == 0:
-            print("No model found, Training....")
+            logging.info("No model found, Training....")
             M = utl.create_model(mots,self.data["label"],utl.make_weights(self.data["weight_id"],mots),auto,self.data["epochs"],self.data["embedding_dim"],self.data["hidden_dim"])
             # A noter il FAUT que l'epoch soit un multiple de 100
             for i in range(100,self.data["epochs"]+100,100):
                 M, the_id_model = self.train_model_and_save(M,dataset_name,100,i,random_key,id_dataset)
         else:
-            print("Model found, extracting...")
+            logging.info("Model found, extracting...")
             #On cherche le plus proche en dessous on SAIT qu'il y en a un car le minimum est 100
             nb_epochs_to_do = -1
             id_to_take = -1
@@ -172,7 +172,7 @@ class Experiment():
         mots = infos_automate["mots"]
         ids_autos = db.get_ids_autos(self.data["id_lang"],id_dataset,id_model,self.data["nb_clusters"])
         if len(ids_autos) == 0:
-            print("No auto found, Creating...")
+            logging.info("No auto found, Creating...")
             A = utl.get_automate_from_model(model,infos_automate,self.data["nb_clusters"],dataset_name,"pred")
             bytes_auto = db.give_raw_bytes_auto(A)
             the_id_auto = db.add_entry_auto(self.data["id_lang"],id_dataset,id_model,"no_specific_name",self.data["nb_clusters"],len(A.Q),bytes_auto)
@@ -180,7 +180,7 @@ class Experiment():
             F1_mean = self.calculate_F1_mean(F1)
             db.update_auto_score(the_id_auto,F1_mean)
         else:
-            print("Auto found, extracting....")
+            logging.info("Auto found, extracting....")
             the_id_auto = ids_autos[0][0]
             A = db.load_auto_from_db(the_id_auto)
         return A,the_id_auto
@@ -235,7 +235,7 @@ def next_gen(list_expes:List[Experiment],scores:List[float]):
     Renvoie la liste de nouvelle expériences
     """
     rank_i = np.argsort(scores)
-    print(rank_i)
+    logging.debug(rank_i)
     rank_i = np.flip(rank_i)[:len(list_expes)//2]
     
     new_expes = []
@@ -275,19 +275,19 @@ import sys
 
 if __name__ == "__main__":
     db.setup_db()
+    logging.basicConfig(level=logging.DEBUG)
     while True: 
         curr = db.get_cursor()
         curr.execute("SELECT id FROM Languages;")
         ids = curr.fetchall()
         next_id = -1
-        print(ids)
         if len(ids) == 0:
             next_id = 1
         else:
             ids.sort()
             next_id = ids[-1][0] +1
 
-        auto,finals,infos = utl.create_first_auto("ml",len_words=5,nb_words=4)
+        auto,finals,infos = utl.create_first_auto("ml")
         by = db.give_raw_bytes_language(auto,finals,infos)
         db.add_entry_lang(
             "no_specific_name",
@@ -296,4 +296,4 @@ if __name__ == "__main__":
             len(infos["mots"][0]),
             len(auto.states),infos["reset_char"] is None,
             by)
-        genetic_algorithm(next_id,10,4)
+        genetic_algorithm(next_id,10,40)

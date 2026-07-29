@@ -1,6 +1,7 @@
 import sqlite3
 import pickle
 import torch
+import logging
 
 from utils import get_device
 
@@ -169,14 +170,14 @@ def load_language(id:int):
     curr.execute("SELECT data FROM Languages WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
-        print("Problème avec la récupération du Language")
+        logging.error("Problème avec la récupération du Language")
         return None,None,None
     data = data[0][0]
     data = pickle.loads(data)
     automate = data["automate"]
     final_states = data["final_states"]
     params = data["params"]
-    print("ID AUTO UTILISE:", id)
+    logging.info("ID AUTO UTILISE: %d", id)
     return automate, final_states, params
     
 def give_raw_bytes_language(auto,finals,infos):
@@ -195,7 +196,7 @@ def load_datasets_to_file(id:int,dataset_name:str):
     curr.execute("SELECT data_train,data_val,data_test FROM Datasets WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
-        print("Problème avec la récupération du Dataset")
+        logging.error("Problème avec la récupération du Dataset")
         return
     data = data[0]
     open(f"{dataset_name}_train.txt","w").write(data[0])
@@ -237,7 +238,7 @@ def load_model(id:int,random_key):
     curr.execute("SELECT data FROM Models WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
-        print("Problème avec la récupération du Model")
+        logging.error("Problème avec la récupération du Model")
         return
     data = data[0][0]
     f = open(f"test/tmp_model{random_key}","wb")
@@ -259,7 +260,7 @@ def load_auto_from_db(id:int):
     curr.execute("SELECT data FROM Autos WHERE id = ?;",(id,))
     data = curr.fetchall()
     if len(data) != 1:
-        print("Problème avec la récupération du Model")
+        logging.error("Problème avec la récupération du Model")
         return
     data = data[0][0]
     return pickle.loads(data)
