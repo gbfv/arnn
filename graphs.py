@@ -77,12 +77,17 @@ def perf_graph(filename):
     data = load_log_file_for_benchmark(filename)
     Z = [int(getattr(x,"NB_WORDS")) for x in data]
     F = [float(getattr(x,"F1_M")) for x in data]
+    A = [float(getattr(x,"F1_A")) for x in data]
     plt.scatter(Z,F,label="F1 score modele",alpha=0.01)
+    plt.scatter(Z,A,label="F1 score auto",alpha=0.01)
     Z_uq = list(set(Z))
     f_mean = []
+    f_amean = []
     for i in Z_uq:
         f_mean.append(np.mean([float(getattr(x,"F1_M")) for x in data if int(getattr(x,"NB_WORDS")) == i]))
+        f_amean.append(np.mean([float(getattr(x,"F1_A")) for x in data if int(getattr(x,"NB_WORDS")) == i]))
     plt.plot(Z_uq,f_mean)
+    plt.plot(Z_uq,f_amean)
     plt.legend()
     plt.xlabel("Nombre de mots dans le motif")
     plt.ylabel("Score F1 modèle (moyenne)")
