@@ -1,4 +1,5 @@
-import time
+import subprocess
+from xml.parsers.expat import model
 import torch
 import pathlib
 from torch.nn.utils.rnn import pad_sequence
@@ -7,18 +8,16 @@ import os
 import json
 from collections import Counter
 import math
+import time
 
 from rnn import ARNN
 from rnn_batch import BRNN
-from gru import TGRU
 from gru_batch import BGRU
 from gru_multi import TMGRU
 from automaton import Automaton
-from automaton_multi import Automaton_multi
-from logDataset import LogDataset, prepared_data, testing_data, testing_data_headers, testing_data_multi
+from logDataset import LogDataset, prepared_data, testing_data, data_instructions, testing_data_multi
 from nfa import NFA
 from utils import get_device
-
 
 
 
@@ -26,28 +25,9 @@ DEVICE = get_device()
 
 
 
-def pad_batch(batch):
-    PADDING_ID_Y = 2
-    sequences_x = [item[0] for item in batch]
-    sequences_y = [item[1] for item in batch]
-     
-    X_padded = pad_sequence(sequences_x, padding_value=256, batch_first=True)
-    Y_padded = pad_sequence(sequences_y, padding_value=PADDING_ID_Y, batch_first=True)
-    
-    # creating a mask to ignore padding in loss computation
-    mask = (Y_padded != PADDING_ID_Y).float()
-    Y_padded[Y_padded == PADDING_ID_Y] = 0.0
-    
-    return X_padded, Y_padded, mask
 
-def load_model(name, path="models"):
-    model_path = f"{path}/{name}.pth"
-    # Loading model
-    if pathlib.Path(model_path).is_file():
-        model = torch.load(model_path, weights_only=False).to(DEVICE)
-    else:
-        raise FileNotFoundError(f"Model file {model_path} not found. Please train the model before testing.")
-    return model
+#################################################
+########## Batch et Concat inutile ###########
 
 
 def rnn_build(name, training_files, whitelist=True, save=True, training=True):
@@ -63,47 +43,6 @@ def rnn_build(name, training_files, whitelist=True, save=True, training=True):
     print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
 
     model = ARNN().to(DEVICE)
-    print(f"Hyperparamètres : {model.get_hyperparameters()}")
-    model.train(dataloader)
-    if save:
-        torch.save(model, model_path)
-    return model
-
-
-    
-def gru_build(name, training_files, whitelist=True, save=True, reverse=False, x32=False, DELTA=6):
-    model_path = f"models/{name}.pth"
-    # Loading model
-    if pathlib.Path(model_path).is_file():
-        return torch.load(model_path, weights_only=False).to(DEVICE)
-    
-    # Building model
-    dataset = LogDataset(files=training_files, whitelist=whitelist, x32=x32)
-    dataset.prep_fs(DELTA=DELTA, reverse=reverse)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, collate_fn=pad_batch)
-    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
-
-    model = TGRU().to(DEVICE)
-    print(f"Hyperparamètres : {model.get_hyperparameters()}")
-    model.train(dataloader)
-    if save:
-        torch.save(model, model_path)
-    return model
-
-
-def gru_multi_build(name, training_files, whitelist=True, save=True, x32=False, DELTA=6):
-    model_path = f"models/{name}.pth"
-    # Loading model
-    if pathlib.Path(model_path).is_file():
-        return torch.load(model_path, weights_only=False).to(DEVICE)
-    
-    # Building model
-    dataset = LogDataset(files=training_files, whitelist=whitelist, x32=x32)
-    dataset.prep_multi(DELTA=DELTA)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, collate_fn=pad_batch)
-    print(f"Fichier chargé pour l'entraînement : {dataset.used_files}")
-
-    model = TMGRU(DELTA+1).to(DEVICE)
     print(f"Hyperparamètres : {model.get_hyperparameters()}")
     model.train(dataloader)
     if save:
@@ -150,32 +89,6 @@ def batch_gru_build(name, training_files, whitelist=True, save=True, DA=-2, DB=2
         torch.save(model, model_path)
     return model
 
-
-
-def test_model(model_name, files, DELTA=6, reverse=False):
-    model = load_model(model_name)
-    
-    # Preparing test data
-    y_test = []
-    predicted = []
-    for file in files:
-        X, y = testing_data(f"data/{file}", DELTA=DELTA)
-        if reverse:
-            X.reverse()
-            y.reverse()
-        y_test.extend(y)
-        print(f"{len(X)} items in testing dataset")
-        
-        X_t = torch.tensor(X).to(DEVICE)
-
-        with torch.no_grad():
-            pred = (model.predict(X_t).squeeze() > 0.8).int().detach().cpu().numpy()
-            predicted.extend(pred)
-    
-    #print(f'Diff : {sum(abs(y_test - predicted))}')
-    print(f"Scores : {model.scores(y_test, predicted)}")
-
-
 def test_model_batch(model_name, files, batch_size=1024, whitelist=True, DA=-2, DB=20):
     model = load_model(model_name)
     
@@ -193,66 +106,6 @@ def test_model_batch(model_name, files, batch_size=1024, whitelist=True, DA=-2, 
         prec, recall, f1 = model.scores(y_t, predicted)
         print(f"Scores : {prec}, {recall}, {f1}")
         return prec, recall, f1
-    
-
-def test_model_multi(model_name, files, DELTA=6):
-    model = load_model(model_name)
-    
-    # Preparing test data
-    y_test = []
-    predicted = []
-    for file in files:
-        X, y = testing_data_multi(f"data/{file}", DELTA=DELTA)
-        y_test.extend(y)
-        print(f"{len(X)} items in testing dataset")
-        
-        X_t = torch.tensor(X).to(DEVICE)
-
-        with torch.no_grad():
-            pred = torch.argmax(model.predict(X_t), dim=1).int().detach().cpu().numpy()  # Prédiction de la classe avec la plus haute probabilité
-            predicted.extend(pred)
-            
-    #print(f'Diff : {sum(abs(y_test - predicted))}') 
-    print(f"Scores : {model.scores(y_test, predicted)}")
-
-
-### Automaton functions ###
-
-
-def automaton_build(model_name, files, states=1000, DELTA=6, reverse=False):
-    model = load_model(model_name)
-
-    auto_path = f"automate/{model_name}_{states}.pkl"
-    if pathlib.Path(auto_path).is_file():
-        with open(auto_path, "rb") as f:
-            return pickle.load(f)
-   
-    #Preparing data
-    X_test, y_test = [], []
-    item = 0
-    for file in files:
-        X, y = testing_data(f"data/{file}", DELTA=DELTA)
-        X_test.append(X)
-        y_test.append(y)
-        item += len(X)
-    print(f"{item} items in testing dataset")
-    
-    #X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
-
-    print("Construction de l'automate...\n")
-    A = Automaton(model, list(range(256)), states, X_test, y_test)
-    A.emonde()
-
-    if reverse:
-        r_delta = A.reverse_delta()
-        A.delta = r_delta
-
-    with open(auto_path, "wb") as f:
-        pickle.dump(A, f)
-    
-    print(f"Automate construit.\nNombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
-    return A
-
 
 def batch_automaton_build(model_name, files, states=1000, DA=-2, DB=20):
     model = load_model(model_name)
@@ -278,65 +131,6 @@ def batch_automaton_build(model_name, files, states=1000, DA=-2, DB=20):
     print(f"Automate construit.\nNombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
     return A
 
-
-def automaton_build_multi(model_name, files, states=1000, DELTA=6):
-    model = load_model(model_name)
-
-    auto_path = f"automate/{model_name}_{states}.pkl"
-    if pathlib.Path(auto_path).is_file():
-        with open(auto_path, "rb") as f:
-            return pickle.load(f)
-    
-    #Preparing data
-    X_test, y_test = [], []
-    item = 0
-    for file in files:
-        X, y = testing_data_multi(f"data/{file}", DELTA=DELTA)
-        X_test.append(X)
-        y_test.append(y)
-        item += len(X)
-    print(f"{item} items in testing dataset")
-    
-    #X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
-
-    print("Construction de l'automate...\n")
-    A = Automaton_multi(model, list(range(256)), states, X_test, y_test)
-    #A.emonde()
-
-    with open(auto_path, "wb") as f:
-        pickle.dump(A, f)
-    
-    print(f"Automate construit.\nNombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
-    return A
-
-
-
-
-def test_automaton(automaton_name, files, model, DELTA=6):
-    auto_path = f"automate/{automaton_name}.pkl"
-    if pathlib.Path(auto_path).is_file():
-        with open(auto_path, "rb") as f:
-            A = pickle.load(f)
-    else:
-        raise FileNotFoundError(f"Automaton file {auto_path} not found. Please build the automaton before testing.")
-
-    print(f"Testing automaton {automaton_name}...\n")
-
-    #Preparing data
-    X_test, y_test = [], []
-    for file in files:
-        X, y = testing_data(f"data/{file}", DELTA=DELTA)
-        X_test.extend(X)
-        y_test.extend(y)
-    #print(f"{len(X_test)} items in testing dataset")
-    
-    X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
-
-    predicted, _ = A.predict(X_t)
-    print(f'Diff : {sum(abs(y_t - predicted))}')
-    prec, recall, f1 = model.scores(y_t, predicted)
-    print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
-    return prec, recall, f1
 
 
 def test_automaton_batch(automaton_name, files, model, DA=-2, DB=20):
@@ -365,8 +159,209 @@ def test_automaton_batch(automaton_name, files, model, DA=-2, DB=20):
     print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
     return prec, recall, f1
 
+#################################################
+#################################################
 
-def test_automaton_multi(automaton_name, files, model, DELTA=6):
+
+
+def pad_batch(batch):
+    PADDING_ID_Y = 100
+    sequences_x = [item[0] for item in batch]
+    sequences_y = [item[1] for item in batch]
+     
+    X_padded = pad_sequence(sequences_x, padding_value=256, batch_first=True)
+    Y_padded = pad_sequence(sequences_y, padding_value=PADDING_ID_Y, batch_first=True)
+    
+    # creating a mask to ignore padding in loss computation
+    mask = (Y_padded != PADDING_ID_Y).float()
+    Y_padded[Y_padded == PADDING_ID_Y] = 0.0
+    
+    return X_padded, Y_padded, mask
+
+def load_model(name, path="models"):
+    model_path = f"{path}/{name}.pth"
+    # Loading model
+    if pathlib.Path(model_path).is_file():
+        model = torch.load(model_path, weights_only=False).to(DEVICE)
+    else:
+        raise FileNotFoundError(f"Model file {model_path} not found. Please train the model before testing.")
+    return model
+
+
+def gru_build(name, training_files, method, path, save=True, instr=False, DELTA=6):
+    model_path = f"models/{name}.pth"
+    # Loading model
+    if pathlib.Path(model_path).is_file():
+        return torch.load(model_path, weights_only=False).to(DEVICE)
+    print("Modèle non trouvé. Construction du modèle...\n")
+    # Building model
+    dataset = LogDataset(path=path, files=training_files)
+    if not instr:
+        if method == "binaire":
+            dataset.prep_fs(DELTA=DELTA, reverse=False)
+        elif method == "multi-classe":
+            dataset.prep_multi(DELTA=DELTA)
+    else: # instructions
+        if method == "binaire":
+            dataset.prep_instr()
+        elif method == "multi-classe":
+            dataset.prep_instr_multiclass()
+
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True, collate_fn=pad_batch)
+    print(f"Fichier chargé pour l'entraînement : {len(dataset.used_files)}\nMéthode d'entraînement : {method}")
+
+    print("Construction du modèle TMGRU...\n")
+    model = TMGRU(method, DELTA+1).to(DEVICE)
+    print(f"Hyperparamètres : {model.get_hyperparameters()}")
+    model.train(dataloader)
+    if save:
+        torch.save(model, model_path)
+    return model
+
+
+
+def test_model(model_name, path, files, instr=False, DELTA=6):
+    model = load_model(model_name)
+    
+    method = model.method
+    # Preparing test data
+    y_test = []
+    predicted = []
+    for file in files:
+        if not instr:
+            if method == "binaire":
+                X, y = testing_data(f"{path}/{file}", DELTA=DELTA)
+            elif method == "multi-classe":
+                X, y = testing_data_multi(f"{path}/{file}", DELTA=DELTA)
+                
+            y_test.extend(y)
+            print(f"{len(X)} items in testing dataset")
+            
+            X_t = torch.tensor(X).to(DEVICE)
+
+            with torch.no_grad():
+                if method == "binaire":
+                    pred = (model.predict(X_t).squeeze() > 0.8).int().detach().cpu().numpy()
+                elif method == "multi-classe":
+                    pred = torch.argmax(model.predict(X_t), dim=1).int().detach().cpu().numpy() # Prédiction de la classe avec la plus haute probabilité
+                predicted.extend(pred)
+        else: # instructions
+            X, y = data_instructions(f"{path}/{file}")
+            for y_i in y:
+                y_test.extend(y_i)
+            print(f"{sum(len(x) for x in X)} items in testing dataset")
+            
+            with torch.no_grad():
+                for x_i in X:
+                    X_t = torch.tensor(x_i).to(DEVICE)
+                    pred = (model.predict(X_t).squeeze() > 0.8).int().detach().cpu().numpy()
+                    predicted.extend(pred)
+    print("Taille de y_test : ", len(y_test))
+    print(f"Scores : {model.scores(y_test, predicted)}")
+
+
+def test_model_dataloader(model_name, path, files, instr=False, DELTA=6):
+    model = load_model(model_name)
+    
+    method = model.method
+    # Preparing test data
+    dataset = LogDataset(path=path, files=files)
+    if instr:
+        if method == "binaire":
+            dataset.prep_instr()
+        elif method == "multi-classe":
+            dataset.prep_instr_multiclass()
+    elif method == "binaire":
+        dataset.prep_fs(DELTA=DELTA)
+    elif method == "multi-classe":
+        dataset.prep_multi(DELTA=DELTA)
+    
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=False, collate_fn=pad_batch)
+    pred, y_test = model.predict_dataloader(dataloader)
+    print(pred.shape, y_test.shape)
+
+    if method == "binaire":
+        pred = (pred.squeeze() > 0.8)
+    elif method == "multi-classe":
+        pred = torch.argmax(pred, dim=1)
+    
+    """ print(f"[*] pred shape: {pred.shape}, y_test shape: {y_test.shape}, mask shape: {mask.shape}")
+    cleaned_y_test = y_test[mask.bool()].tolist()
+    cleaned_pred = pred[mask.bool()].tolist()
+    print("Taille clean_y_test : ", len(cleaned_y_test), " / Taille clean_pred : ", len(cleaned_pred)) """
+    pred = pred.detach().cpu().numpy()
+    y_test = y_test.detach().cpu().numpy()
+    print(f"Taille y_test : {len(y_test)} / Taille pred : {len(pred)}")
+
+    print(f"Scores : {model.scores(y_test, pred)}")
+
+
+### Automaton functions ###
+
+#deprecated
+def automaton_build(model_name, path, files, states=1000, DELTA=6, init_build="brute"):
+    model = load_model(model_name)
+
+    auto_path = f"automate/{model_name}_{states}.pkl"
+    if pathlib.Path(auto_path).is_file():
+        with open(auto_path, "rb") as f:
+            return pickle.load(f)
+   
+    method = model.method
+    #Preparing data
+    X_auto = []
+    item = 0
+    for file in files:
+        if method == "binaire":
+            X, _ = testing_data(f"{path}/{file}", DELTA=DELTA)
+        elif method == "multi-classe":
+            X, _ = testing_data_multi(f"{path}/{file}", DELTA=DELTA)
+        X_auto.append(X)
+        item += len(X)
+    print(f"{item} items in training dataset")
+    
+    print("Construction de l'automate...\n")
+
+    A = Automaton(model, list(range(256)), states, X_auto, init_build=init_build)
+    A.emonde()
+
+    with open(auto_path, "wb") as f:
+        pickle.dump(A, f)
+    
+    print(f"Automate construit.\nNombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
+    return A
+
+
+def automaton_build_dataloader(model_name, path, files, instr=False, states=1000, DELTA=6, init_build="brute"):
+    model = load_model(model_name)
+
+    auto_path = f"automate/{model_name}_{states}.pkl"
+    if pathlib.Path(auto_path).is_file():
+        with open(auto_path, "rb") as f:
+            return pickle.load(f)
+
+    method = model.method
+    # Preparing test data
+    dataset = LogDataset(path=path, files=files)
+
+    if method == "binaire":
+        dataset.prep_fs(DELTA=DELTA)
+    elif method == "multi-classe":
+        dataset.prep_multi(DELTA=DELTA)
+    print(f"{sum(len(x) for x in dataset.data)} items in training dataset")
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=False, collate_fn=pad_batch)
+
+    A = Automaton(model, list(range(256)), states, dataloader, init_build=init_build)
+    A.emonde()
+
+    with open(auto_path, "wb") as f:
+        pickle.dump(A, f)
+
+    print(f"Automate construit.\nNombre d'état après émondage : {len(A.Q)} \nNombre d'états finaux : {len(A.F)}")
+    return A
+
+
+def test_automaton(automaton_name, path, files, model, init_state=-1, DELTA=6):
     auto_path = f"automate/{automaton_name}.pkl"
     if pathlib.Path(auto_path).is_file():
         with open(auto_path, "rb") as f:
@@ -376,21 +371,26 @@ def test_automaton_multi(automaton_name, files, model, DELTA=6):
 
     print(f"Testing automaton {automaton_name}...\n")
 
+    method = model.method
     #Preparing data
     X_test, y_test = [], []
     for file in files:
-        X, y = testing_data_multi(f"data/{file}", DELTA=DELTA)
+        if method == "binaire":
+            X, y = testing_data(f"{path}/{file}", DELTA=DELTA)
+        elif method == "multi-classe":
+            X, y = testing_data_multi(f"{path}/{file}", DELTA=DELTA)
+        #Voir pour add au lieu de extend, pour éviter qu'un echantillon en influence d'autres
         X_test.extend(X)
         y_test.extend(y)
-    #print(f"{len(X_test)} items in testing dataset")
     
     X_t, y_t = torch.tensor(X_test).to(DEVICE), torch.tensor(y_test)
+    print(f"{len(X_test)} items in testing dataset")
+    predicted, _ = A.predict(X_t, init_state=init_state)
+    print(model.scores(y_t, predicted))
 
-    predicted, _ = A.predict(X_t)
-    prec, recall, f1 = model.scores(y_t, predicted)
-    print(f"Scores : Precision: {prec}, Recall: {recall}, F1-score: {f1}")
-    return prec, recall, f1
 
+
+###### OTHER FUNCTIONS ######
 
 
 
@@ -485,11 +485,11 @@ def loss_stat(model_name, build_files=["kernel32.log", "msvcr100.log", "user32.l
         json.dump(res, f)
 
 
-def stats_states_batch(auto_path, files, whitelist=True):
+def stats_states_batch(auto_path, path, files):
     with open(auto_path, "rb") as f:
         A = pickle.load(f)
 
-    dataset = LogDataset(files=files, whitelist=whitelist)
+    dataset = LogDataset(path=path, files=files)
     dataset.prep_batch(DA=-2, DB=20)
     historique = []
 
@@ -519,11 +519,11 @@ def stats_states_batch(auto_path, files, whitelist=True):
     return stats
 
 
-def stats_states(auto_path, files, whitelist=True):
+def stats_states(auto_path, files, path):
     with open(auto_path, "rb") as f:
         A = pickle.load(f)
 
-    dataset = LogDataset(files=files, whitelist=whitelist)
+    dataset = LogDataset(path=path, files=files)
     dataset.prep_concat(training=False)
     historique = []
 
@@ -726,8 +726,8 @@ def n_plus_court(taille, graph, initial_state=-1, verbose=False):
         paths.append((path, dist))
     return paths
 
-        
-        
+
+
 def reverse_graph(graph):
     reverse = {}
     for (q, i), (q_next, w) in graph.items():
@@ -738,8 +738,15 @@ def reverse_graph(graph):
     return reverse
 
 
+def reverse_graph_simple(graph):
+    reverse = {}
+    for (q, i), q_next in graph.items():
+        reverse[(q_next, i)] = q
+    return reverse
 
-def find_signature(A, test_files, taille_chemin, comparaison=False):
+
+
+def find_signature(A, path, test_files, taille_chemin, comparaison=False):
     """ comparaison permet d'afficher les chemins de taille_chemin depuis les états d'oublie vers les états finaux, pour comparer avec les chemins trouvés dans l'autre sens. """
 
     precision = (-math.log10(1/7)) * taille_chemin
@@ -749,7 +756,7 @@ def find_signature(A, test_files, taille_chemin, comparaison=False):
     multi_X = []
     print(f"Nombre d'état : {len(A.Q)} ")
     for file in test_files:
-        X, _ = testing_data(f"data/{file}", DELTA=6) #delta n'a pas d'importance ici, on n'utilise pas les labels
+        X, _ = testing_data(f"{path}/{file}", DELTA=6) #delta n'a pas d'importance ici, on n'utilise pas les labels
         multi_X.append(X)
     score = A.score_path(multi_X)
 
@@ -767,6 +774,7 @@ def find_signature(A, test_files, taille_chemin, comparaison=False):
         finaux.add(q) if q in A.F else None
 
     print(f"A.F : {len(A.F)} / finaux : {len(finaux)} ")
+    print(A.F, finaux)
     reversed_graph = reverse_graph(graph)
 
     #Checher les états d'oublie
@@ -818,7 +826,7 @@ def find_signature(A, test_files, taille_chemin, comparaison=False):
         print(f"{chemin} | {binaire}| Distance : {dist:.3f}")
 
     graph_to_dot(subgraph, filename="signature_subgraph.dot", highlight=[("yellow", A.F), ("cyan", oblivion_states)])
-    return subgraph, oblivion_states 
+    return subgraph, oblivion_states
 
 
 
@@ -838,7 +846,27 @@ def graph_to_dot(graph, filename="graph.dot", highlight=[]):
 
 
 
-def real_signatures(A, files, DELTA=6):
+def graph_to_dot_alt(graph, filename="graph.dot", highlight=[]):
+    """ highlight : (color, [q1, q2, ...]) """
+    dot = "digraph {\n"
+
+    for color, states in highlight:
+        for q in states:
+            dot += f"{q} [fillcolor=\"{color}\", style=filled];\n"
+
+    for (q, i), q_next in graph.items():
+        dot += f"{q} -> {q_next} [label=\"{i}\"];\n"
+    dot += "}"
+    with open(filename, "w") as f:
+        f.write(dot)
+
+
+
+
+
+
+
+def real_signatures(A, path, files, DELTA=6):
     offset = DELTA-1
     graph = "digraph {\n"
     freq = dict()
@@ -848,7 +876,7 @@ def real_signatures(A, files, DELTA=6):
         graph += f"{final} [fillcolor=yellow, style=filled];\n"
 
     for file in files:
-        X, _ = testing_data(f"data/{file}", DELTA=DELTA)
+        X, _ = testing_data(f"{path}/{file}", DELTA=DELTA)
         p, h = A.predict(torch.tensor(X))
         functions = [i for i in range(len(p)) if p[i] == 1]
         for i in functions:
@@ -883,38 +911,309 @@ def real_signatures(A, files, DELTA=6):
         f.write(graph)
     return true_graph
 
+
+def all_path(A, length=6): #Trop volumineux
+    subgraph = dict()
+    reversed_delta = A.reverse_delta()
+    visited = set()
+    for f in A.F:
+        queue = [(f, 0)]
+        while queue:
+            current, dist = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            if dist < length:
+                for (q, i), q_next in reversed_delta.items():
+                    if q == current:
+                        for trg in q_next:
+                            print(f"Transition : {q} --0x{i:02X}--> {trg}")
+                            subgraph[(trg, i)] = q
+                            queue.append((trg, dist+1))
+    
+    graph_to_dot_alt(subgraph, filename=f"all_paths_{length}.dot", highlight=[("yellow", A.F), ("#AA00FF", A.get_ranking(1)), ("#AA22FF", A.get_ranking(2))])#, ("#AA44FF", A.get_ranking(3)), ("#AA66FF", A.get_ranking(4)), ("#AA88FF", A.get_ranking(5)), ("#AABBFF", A.get_ranking(6))])
+    subprocess.run(["dot", "-Tsvg", f"all_paths_{length}.dot", "-o", f"all_paths_{length}.svg"])
+    return subgraph
+
+######## Arbre de signatures ########
+
+class tree_signature:
+    def __init__(self, data):
+        self.data = data
+        self.children = []
+        
+    def add_child(self, data):
+        child = tree_signature(data)
+        self.children.append(child)
+        return child
+    
+    def remove_child(self, child):
+        self.children.remove(child)
+    
+    def toGraph(self, first=False):
+        dot = ""
+        for c in self.children:
+            if first and self.data == ():
+                dot += f'"root" -> "{c.data}";\n'
+            else:
+                dot += f'"{self.data}" -> "{c.data}";\n'
+            dot += c.toGraph()
+        if first:
+            dot = "digraph {\n" + dot + "}"
+        return dot
+    
+    #Obsolete
+    def predict(self, X, length=6):
+        n = len(X)
+        res = [0]*n
+        ptr = 0
+        while ptr < n:
+            v = False
+            for c in self.children:
+                if X[ptr] == c.data:
+                    if ptr in [17, 225, 545, 753]:
+                        v = True
+                    pred = c.child_predict("".join(X[ptr:ptr+length]),v)
+                    if pred == 1:
+                        res[ptr+length-1] = 1
+                    if v:
+                        print(f"Prediction for {X[ptr:ptr+length]} : {res[ptr:ptr+length]}")
+            ptr += 1
+        return res
+    #Obsolete
+    def child_predict(self, motif, verbose=False):
+        if verbose:
+            print(f"{self} -> {motif}")
+        if not self.children: #feuille
+            return 1
+        
+        for c in self.children:
+            if motif.startswith(c.data):
+                return c.child_predict(motif, verbose=verbose)
+
+        return 0 # aucun match
+
+    def __str__(self):
+        return f"Node({self.data}) -- Children: {sorted([c.data for c in self.children])}"
+
+
+def get_signature_tree(path, files, length=6, visualize=False):
+    sig = set()
+    for file in files:
+        X, Y = testing_data(f"{path}/{file}", DELTA=length)
+        index = [i for i in range(len(Y)) if Y[i] == 1]
+        tmp = set()
+        for i in index:
+            tmp.add(tuple(X[i-(length-1):i+1]))
+        sig = sig.union(tmp)
+    print(f"Nombre de signatures uniques : {len(sig)}")
+    print(f"Exemples de signatures : {list(sig)[:5]}")
+
+    root = tree_signature(())
+    queue = [(root, sig)]
+    while queue:
+        current, sig_set = queue.pop(0)
+
+        prefixes = {}
+        for s in sig_set:
+            if len(s) >= len(current.data) + 1:
+                prefix = s[:len(current.data)+1]
+                if prefix not in prefixes:
+                    prefixes[prefix] = set()
+                prefixes[prefix].add(s)
+        
+        for prefix, s_set in prefixes.items():
+            child = current.add_child(prefix)
+            queue.append((child, s_set))
+
+    
+    dot = root.toGraph(first=True)
+    print("Génération du fichier DOT pour l'arbre de signatures...")
+    with open(f"experiences/signature/celica_sign_tree_ref_{length}.pkl", "wb") as f:
+        pickle.dump(root, f)
+    with open(f"experiences/signature/celica_sign_tree_ref_{length}.dot", "w") as f:
+        f.write(dot)
+    
+    if visualize:
+        print("Conversion du fichier DOT en SVG...")
+        subprocess.run(["dot", "-Tsvg", f"experiences/signature/celica_sign_tree_ref_{length}.dot", "-o", f"experiences/signature/celica_sign_tree_ref_{length}.svg"])
+    return root
+        
+
+#obsolete, mais je garde pour l'instant
+def automaton_to_tree(delta, init_state=-1, final_states=set(), length=6):
+    def prune(node, length): #TODO: c'est pas gracieux, mais jsp où le mettre
+        remove_list = []
+        for child in node.children:
+            prune(child, length)
+            if len(child.data) < length and not child.children:
+                remove_list.append(child)
+        for child in remove_list:
+            node.remove_child(child)
+
+    # Profondeur de chaque état
+    queue = [init_state]
+    profondeur = {init_state: 0}
+    while queue:
+        current = queue.pop(0)
+        for (q, i), q_next in delta.items():
+            if q == current and q_next not in profondeur:
+                # On enregistre la profondeur dès la découverte
+                profondeur[q_next] = profondeur[current] + 1
+                queue.append(q_next)
+
+    print(f"Profondeur : {profondeur}")
+
+    root = tree_signature(())
+    queue = [(root, init_state)]
+    while queue:
+        current, state = queue.pop(0)
+        current_depth = len(current.data)
+        if current_depth < length:
+            for (q, i), q_next in delta.items():
+                if q == state and profondeur[q_next] == current_depth + 1: # filtre par rapport à la profondeur pour accélérer la construction de l'arbre
+                    if current_depth+1 == length: # dernier niveau
+                        if q_next in final_states:
+                            child = current.add_child(current.data+(i,))
+                            #child.add_child("FINAL")
+                            queue.append((child, q_next))
+                    else: # < length
+                        child = current.add_child(current.data+(i,))
+                        queue.append((child, q_next))
+
+    # élagage des branches qui ne mènent pas à un état final
+    print("Élagage des branches de l'arbre...")
+    #prune(root, length)
+
+    dot = root.toGraph(first=True)
+    with open(f"spanning.dot", "w") as f:
+        f.write(dot)
+    return root
+
+
+
+def distance_tree_auto(node, state, A):
+    """Calcul la distance entre l'arbre et l'automate"""
+    if not node.children: #feuille
+        #print("ok") if state in A.F else print(f"ko")
+        return 0 if state in A.F else 2**-len(node.data)
+    
+    score = 0
+
+    if state in A.F and node.data != ():
+        #print(f"Final sans feuille / {node.data}")
+        score += 2**-(len(node.data))
+
+    explored = set()
+    for child in node.children:
+        if (state, child.data[-1]) in A.delta:
+            explored.add(child.data[-1])
+            next_state = A.delta[(state, child.data[-1])]
+            score += distance_tree_auto(child, next_state, A)
+        else: # pas de transition, on considère que c'est une erreur + pas d'exploration
+            #print(f"Pas de transition alors que chemin / {child.data}")
+            score += 2**-(len(child.data)+1)
+
+    return score
+
+
+def compteur_mots(A, init_state, length):
+    """Compte le nombre de mots de longueur 1 à length que l'automate A accepte à partir de l'état init_state"""
+    compteur_actuel = {q:0 for q in A.Q}
+    compteur_actuel[init_state] = 1
+    total = 0
+
+    for _ in range(1, length+1):
+        compteur_suivant = {q:0 for q in A.Q}
+        for (q, _), q_next in A.delta.items():
+            compteur_suivant[q_next] += compteur_actuel[q]
+        compteur_actuel = compteur_suivant
+        total += sum([compteur_actuel[q] for q in A.F])
+    return total
+
+
 ##### Main #####
 
 
 if __name__ == "__main__":
     #Celica
-    build = ["kernel32.log", "msvcr100.log", "user32.log", "ntdll.log", "libcrypto.log", "firewallAPI.log", "ws2_32.log", "signdrv.log", "cmdext.log", "gdi32.log"]
-    test = ["kerberos.log","ieproxy.log","crypt32.log","clp64.log","energy.log","basesrv.log"]
+    #build = ["kernel32.log", "msvcr100.log", "user32.log", "ntdll.log", "libcrypto.log", "firewallAPI.log", "ws2_32.log", "signdrv.log", "cmdext.log", "gdi32.log"]
+    #test = ["kerberos.log","ieproxy.log","crypt32.log","clp64.log","energy.log","basesrv.log"]
+
+    with open("data/dataset.json", "r") as f:
+        dataset = json.load(f)
+
+    ds = "Levin"
+    build = dataset[ds]["train"]
+    test = dataset[ds]["test"]
+    path_file = f"data/{ds.lower()}"
 
     #model = "Hgru_CelicaFS.500"
     #chemin_probable(model, init_state=580, test_files="Celica")
 
-    """ delta = 10
-    gru_build("Hgru_CelicaFS_10.500", build, save=True, DELTA=delta)
-    test_model("Hgru_CelicaFS_10.500", test, DELTA=delta)
+
+    delta = 7
+    instr = True
+    method = "multi-classe"
+    gru_build("ABC_instrMC", build, method, path_file, instr=instr,save=True, DELTA=delta)
+    test_model_dataloader("ABC_instrMC", path_file, test, instr=instr, DELTA=delta)
+    exit(0)
     print("\n######### Automate #########\n")
     start = time.time()
-    automaton_build("Hgru_CelicaFS_10.500", build, states=3000, DELTA=delta)
+    A = automaton_build_dataloader("ABC_test6", path_file, build, states=1000, DELTA=delta)
+    exit(0)
     print(f"Automaton built in {round(time.time() - start, 2)} seconds")
-    test_automaton("Hgru_CelicaFS_10.500_3000", test, model=load_model("Hgru_CelicaFS_10.500"), DELTA=delta)
+    test_automaton("ABC_test6_1000", path_file, test, model=load_model("ABC_test6"), DELTA=delta)
+    exit(0)
+
+    #find_signature(A, test, taille_chemin=delta, comparaison=True)
+
+    #for i in [-1, 563, 89, 67, 333, 0]:
+    #    test_automaton("ABC_test6_1000", test, model=load_model("ABC_test6"), DELTA=delta, init_state=i)
 
 
-    fs = []
-    for file in test+build:
-        _, _, f1_10 = test_automaton("Hgru_CelicaFS_10.500_3000", [file], model=load_model("Hgru_CelicaFS_10.500"), DELTA=10)
-        _, _, f1_6 = test_automaton("Hgru_CelicaFS.500_1000", [file], model=load_model("Hgru_CelicaFS.500"), DELTA=6)
-        fs.append((file, f1_10, f1_6))
+    with open("automate/ABC_test_1000.pkl", "rb") as f:
+        A = pickle.load(f)
 
-    print("\n\n######### Résultats #########\n")
-    for file, f1_10, f1_6 in fs:
-        print(f"File {file:<16} : F1-score with DELTA=10 : {round(f1_10*100,1):<5.2f}% | DELTA=6 : {round(f1_6*100,1):<5.2f}%") """
-   
-    
+    A.minimize()
+
+
+    cpt = {q: 0 for q in A.Q}
+    for (q,i), q_next in A.delta.items():
+        cpt[q_next] += 1
+    print(sorted(cpt.items(), key=lambda x: x[1], reverse=True)[:10])
+    print(sorted(cpt.items(), key=lambda x: x[1])[:10])
+    print("Moyenne : ", sum(cpt.values())/len(cpt))
+    print("Médiane : ", sorted(cpt.values())[len(cpt)//2])
+
+
+    root = get_signature_tree(build, length=delta)
+
+    #root = automaton_to_tree(A.delta, init_state=-1, final_states=A.F, length=delta)
+    #subprocess.run(["dot", "-Tsvg", f"spanning.dot", "-o", f"spanning.svg"])
+
+    scores = []
+    for i in range(-1, len(A.Q)-1):
+        score = distance_tree_auto(root, i, A)
+        scores.append((score, i))
+        print(f"{i}: Score de l'arbre par rapport à l'automate : {score:.7f}")
+    sorted_scores = sorted(scores, key=lambda x: x[0])
+    print(f"Meilleurs états : {sorted_scores}")
+
+    selected = [s[1] for s in sorted_scores if s[0] == sorted_scores[0][0]]
+    print(f"États sélectionnés : {selected}")
+
+    mots = []
+    for s in selected:
+        res = compteur_mots(A, s, delta)
+        mots.append((s, res))
+        print(f"Nombre de mots de longueur 1 à {delta} acceptés par l'automate à partir de l'état {s} : {res}")
+
+    print(f"Nombre de mots : {sorted(mots, key=lambda x: x[1])}")
+        
+
+
+
 
     """ model = "Hgru_CelicaFS.500"
     taille_chemin = 6
@@ -1040,8 +1339,8 @@ if __name__ == "__main__":
 
 
 
-    
-    """ with open(f"automate/Hgru_CelicaFS_multi8.500_1000.pkl", "rb") as f:
+
+    """ with open(f"automate/ABC_test_1000.pkl", "rb") as f:
         A = pickle.load(f)
     #A.emonde()
     
@@ -1050,19 +1349,19 @@ if __name__ == "__main__":
     #    f.write(A.dot())
 
 
-    tmp = [0]*9
+    tmp = [0]*7
     for q in A.rank.keys():
         tmp[A.rank[q]] += 1
     print(tmp) 
 
     
-    for i in range(0, 9):
+    for i in range(0, 7):
         ranked = A.get_ranking(i)
         print(f"{len(ranked)} noeuds de rang {i} : {list(ranked)[:10]}")
 
-    print(len(A.Q)) """
+    print(len(A.Q))
 
-    """
+    
     #Calcul des scores pour chaque transition
     multi_X = []
     print(f"Nombre d'état : {len(A.Q)} ")
@@ -1091,7 +1390,7 @@ if __name__ == "__main__":
                 dec = int(p[1], 16) if p[1] is not None else None
                 if dec is not None:
                         subgraph[(p[0], dec)] = graph[(p[0], dec)]
-
-    graph_to_dot(subgraph, filename="graph_sus.dot", highlight=[("yellow", A.F), ("cyan", oblivion_states), ("#005500", A.get_ranking(2)), ("#007700", A.get_ranking(3)), ("#009900", A.get_ranking(4)), ("#00BB00", A.get_ranking(5)), ("#00DD00", A.get_ranking(6)), ("#00FF00", A.get_ranking(7))])
-    """
+    print(f"Finals : {A.F}")
+    graph_to_dot(subgraph, filename="graph_sus.dot", highlight=[("yellow", A.F), ("cyan", oblivion_states), ("#005500", A.get_ranking(2)), ("#007700", A.get_ranking(3)), ("#009900", A.get_ranking(4)), ("#00BB00", A.get_ranking(5)), ("#00DD00", A.get_ranking(6)), ("#00FF00", A.get_ranking(7)), ("#00FF55", A.get_ranking(8)), ("#00FF77", A.get_ranking(9))])
+     """
 

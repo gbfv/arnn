@@ -55,6 +55,24 @@ def parse_funs(lines):
 def parse_heads(lines):
     return set(parse_by_keyword(lines, "head")[0][1])
 
+def parse_pages(lines):
+    mem = Memory()
+    for (s,d,_) in parse_by_keyword(lines, "page"):
+        segment = MemorySegment()
+        m = re.search("addr=(.*)>", s)
+        segment.start = int(m.group(1),base=16)
+        segment.data = d
+        mem.segments.append(segment)
+    return mem
+
+def parse_instr(lines):
+    instrs = dict()
+    for (s,d,_) in parse_by_keyword(lines, "instr"):
+        m = re.search("pag_addr=(.*)>", s)
+        addr = int(m.group(1),base=16)
+        instrs[addr] = d
+    return instrs
+
 def parse_log_file(filename):
     res = dict()
     with open(filename) as f:
@@ -65,9 +83,17 @@ def parse_log_file(filename):
     return res
 
 
+def parse_log_file_instructions(filename):
+    res = dict()
+    with open(filename) as f:
+        lines = f.readlines()
+        res['instructions'] = parse_instr(lines)
+        res['pages'] = parse_pages(lines)
+    return res
+
+
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
-
 
 
 def progress_bar(current, total, largeur=40):
